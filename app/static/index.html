@@ -133,34 +133,6 @@
         </div>
       </div>
 
-      <!-- Subgraph Sampling & Depth Controls -->
-      <div id="subgraph-controls-section" class="p-3.5 border-b border-slate-800 space-y-3">
-        <div class="flex items-center justify-between">
-          <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Subgraph Scope</span>
-          <button onclick="loadInitialSubgraph()" class="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium">Apply</button>
-        </div>
-        <div class="space-y-1">
-          <div class="flex justify-between text-xs">
-            <span class="text-slate-400">Main Terms Shown</span>
-            <span id="main-terms-val" class="mono text-slate-200">10</span>
-          </div>
-          <input id="main-terms-slider" type="range" min="3" max="35" value="10"
-            oninput="document.getElementById('main-terms-val').innerText = this.value"
-            onchange="loadInitialSubgraph()"
-            class="w-full accent-indigo-500 cursor-pointer" />
-        </div>
-        <div class="space-y-1">
-          <div class="flex justify-between text-xs">
-            <span class="text-slate-400">Initial Subterm Depth</span>
-            <span id="depth-val" class="mono text-slate-200">2</span>
-          </div>
-          <input id="depth-slider" type="range" min="0" max="4" value="2"
-            oninput="document.getElementById('depth-val').innerText = this.value"
-            onchange="loadInitialSubgraph()"
-            class="w-full accent-indigo-500 cursor-pointer" />
-        </div>
-      </div>
-
       <!-- Layout Controls -->
       <div class="p-3.5 border-b border-slate-800 space-y-2">
         <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
@@ -212,12 +184,25 @@
           </div>
           <div class="h-3 w-px bg-slate-700"></div>
           <div id="telemetry-tip" class="text-[11px] text-indigo-300">
-            Tip: Click a node to inspect · In search results, click any node to isolate its trajectory to the found term/code
+            Search for a term or ICD-10 code in the left panel to display its graph
           </div>
           <button id="btn-restore-search" onclick="restoreFullSearchSubgraph()"
             class="hidden px-2.5 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-md text-[11px] font-medium transition">
             Show All Search Results
           </button>
+        </div>
+      </div>
+
+      <!-- Empty Graph Placeholder State -->
+      <div id="empty-graph-state" class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div class="bg-slate-900/85 backdrop-blur border border-slate-800 rounded-2xl px-6 py-5 max-w-md text-center shadow-2xl space-y-2">
+          <div class="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto font-bold text-base">
+            ⌕
+          </div>
+          <h3 class="text-sm font-semibold text-slate-200">No Graph Displayed</h3>
+          <p class="text-xs text-slate-400">
+            Enter a medical term (e.g. <span class="mono text-slate-300">Aberrant</span>, <span class="mono text-slate-300">Abdomen, abdominal</span>) or an ICD-10 code (e.g. <span class="mono text-amber-300">Q27.8</span>) in the search bar on the left to build and visualize its graph.
+          </p>
         </div>
       </div>
 
@@ -233,7 +218,7 @@
           + Expand Selected Node
         </button>
         <button onclick="resetCurrentGraph()" class="px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-300 transition">
-          Reset View
+          Clear / Reset
         </button>
         <button onclick="exportGraphPNG()" class="px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-emerald-400 transition">
           Export PNG
@@ -608,7 +593,7 @@
       updateWorkspaceHeader(data.active);
       renderElementStats(data.active.tag_counts || {});
       renderLegend();
-      await loadInitialSubgraph();
+      clearDocumentGraph();
     }
 
     function populateFileSelectors(data) {
@@ -691,13 +676,16 @@
       if (mode === 'document') {
         docBtn.className = 'px-3 py-1 rounded-md text-xs font-medium transition bg-indigo-600 text-white shadow';
         schBtn.className = 'px-3 py-1 rounded-md text-xs font-medium transition text-slate-400 hover:text-slate-200';
-        document.getElementById('subgraph-controls-section').classList.remove('hidden');
         renderLegend();
-        await loadInitialSubgraph();
+        const q = document.getElementById('search-input').value.trim();
+        if (q) {
+          await quickSearch(q);
+        } else {
+          clearDocumentGraph();
+        }
       } else {
         schBtn.className = 'px-3 py-1 rounded-md text-xs font-medium transition bg-indigo-600 text-white shadow';
         docBtn.className = 'px-3 py-1 rounded-md text-xs font-medium transition text-slate-400 hover:text-slate-200';
-        document.getElementById('subgraph-controls-section').classList.add('hidden');
         renderLegend();
         const res = await fetch('/api/schema-graph');
         const payload = await res.json();
@@ -711,30 +699,31 @@
       }
     }
 
-    async function loadInitialSubgraph() {
+    function clearDocumentGraph() {
       searchMatchedIds = [];
       isTrajectoryIsolated = false;
+      selectedNodeId = null;
+      document.getElementById('search-input').value = '';
       document.getElementById('btn-restore-search').classList.add('hidden');
       document.getElementById('telemetry-tip').innerText =
-        'Tip: Click a node to inspect · Double-click any node to expand its connected subgraph';
-      const maxTerms = document.getElementById('main-terms-slider').value;
-      const maxDepth = document.getElementById('depth-slider').value;
-      const res = await fetch(`/api/subgraph?max_main_terms=${maxTerms}&max_depth=${maxDepth}`);
-      const payload = await res.json();
-      renderGraphPayload(payload);
-      const highlighted = cy.nodes('[?highlighted]');
-      if (highlighted.length > 0) {
-        highlighted[0].select();
-        selectedNodeId = highlighted[0].id();
-        await inspectNode(selectedNodeId);
-      }
+        'Search for a term or ICD-10 code in the left panel to display its graph';
+      cy.elements().remove();
+      document.getElementById('empty-graph-state').classList.remove('hidden');
+      updateTelemetryCounts();
     }
 
     function renderGraphPayload(payload) {
       cy.elements().remove();
-      cy.add([...(payload.nodes || []), ...(payload.edges || [])]);
-      const layoutName = document.getElementById('layout-select').value;
-      runGraphLayout(layoutName);
+      const nodes = payload.nodes || [];
+      const edges = payload.edges || [];
+      if (nodes.length > 0) {
+        document.getElementById('empty-graph-state').classList.add('hidden');
+        cy.add([...nodes, ...edges]);
+        const layoutName = document.getElementById('layout-select').value;
+        runGraphLayout(layoutName);
+      } else {
+        document.getElementById('empty-graph-state').classList.remove('hidden');
+      }
       updateTelemetryCounts();
     }
 
@@ -1006,7 +995,7 @@
       if (currentMode === 'schema') {
         await switchMode('schema');
       } else {
-        await loadInitialSubgraph();
+        clearDocumentGraph();
       }
     }
 
@@ -1024,7 +1013,7 @@
       if (currentMode === 'schema') {
         await switchMode('schema');
       } else {
-        renderGraphPayload(data.initial_subgraph);
+        clearDocumentGraph();
       }
     }
 
@@ -1051,7 +1040,7 @@
       populateFileSelectors(filesData);
       updateWorkspaceHeader(data.active);
       renderElementStats(data.active.tag_counts || {});
-      renderGraphPayload(data.initial_subgraph);
+      clearDocumentGraph();
     }
 
     function exportGraphPNG() {
