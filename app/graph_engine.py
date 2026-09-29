@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
+import re
 import time
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -344,6 +347,12 @@ class XMLGraphWorkspace:
         self.code_to_terms: Dict[str, List[str]] = defaultdict(list)
         self.tag_counts: Counter = Counter()
 
+        # Root-to-code-leaf trajectory index for multi-keyword trajectory ranking
+        self.trajectories: List[Dict[str, Any]] = []
+        self.node_to_trajectory_ids: Dict[str, List[int]] = defaultdict(list)
+        self.node_search_text: Dict[str, str] = {}
+        self.node_title_lower: Dict[str, str] = {}
+
         self._build_index()
         self.load_time_ms = round((time.perf_counter() - t0) * 1000, 1)
 
@@ -561,6 +570,49 @@ class XMLGraphWorkspace:
                 self.nodes[code_node_id]["child_count"] = len(term_ids)
                 self.nodes[code_node_id]["properties"]["linked_terms_count"] = len(term_ids)
 
+        # Precompute searchable text for every node (excluding root n_0)
+        for nid, ndata in self.nodes.items():
+            if nid == self.root_id:
+                continue
+            title_val = (ndata.get("title") or "").strip()
+            nemod_val = (ndata.get("nemod") or "").strip()
+            self.node_title_lower[nid] = title_val.lower()
+            self.node_search_text[nid] = f"{title_val} {nemod_val}".strip().lower()
+
+        # Precompute all root-to-code-leaf trajectories in document order
+        for nid, ndata in self.nodes.items():
+            if ndata["tag"] not in ("mainTerm", "term", "entity"):
+                continue
+            for sedge in self.node_semantic_edges.get(nid, []):
+                if sedge["source"] == nid and sedge["edge_type"] in ("CODES_TO", "MANIF", "SEECAT", "SUBCAT"):
+                    code_node_id = sedge["target"]
+                    chain: List[str] = []
+                    curr: Optional[str] = nid
+                    while curr is not None:
+                        chain.append(curr)
+                        curr = self.nodes.get(curr, {}).get("parent_id")
+                    chain.reverse()
+                    traj_nodes = tuple(chain + [code_node_id])
+                    hier_edges = [f"e_hier_{chain[i]}_{chain[i + 1]}" for i in range(len(chain) - 1)]
+                    traj_edges = tuple(hier_edges + [sedge["id"]])
+                    t_idx = len(self.trajectories)
+                    code_node = self.nodes.get(code_node_id, {})
+                    code_label = code_node.get("label", code_node_id)
+                    self.trajectories.append(
+                        {
+                            "id": t_idx,
+                            "nodes": traj_nodes,
+                            "edges": traj_edges,
+                            "term_id": nid,
+                            "code_id": code_node_id,
+                            "code_edge_id": sedge["id"],
+                            "code": code_node.get("title", ""),
+                            "breadcrumb": f"{ndata.get('breadcrumb', '')} → {code_label}",
+                        }
+                    )
+                    for path_nid in traj_nodes[1:]:
+                        self.node_to_trajectory_ids[path_nid].append(t_idx)
+
     def get_summary(self) -> Dict[str, Any]:
         return {
             "xml_filename": self.xml_path.name,
@@ -570,6 +622,7 @@ class XMLGraphWorkspace:
             "validation_errors": self.validation_errors,
             "load_time_ms": self.load_time_ms,
             "total_graph_nodes": len(self.nodes),
+            "total_trajectories": len(self.trajectories),
             "tag_counts": dict(self.tag_counts),
             "schema_info": self.schema_analyzer.schema_info,
         }
@@ -590,8 +643,10 @@ class XMLGraphWorkspace:
         include_semantic: bool = True,
         highlight_ids: Optional[Set[str]] = None,
         allowed_semantic_edge_ids: Optional[Set[str]] = None,
+        node_match_details: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         highlight_ids = highlight_ids or set()
+        node_match_details = node_match_details or {}
         cy_nodes = []
         cy_edges = []
         seen_edges: Set[str] = set()
@@ -611,6 +666,9 @@ class XMLGraphWorkspace:
                 continue
             data = dict(node)
             data["highlighted"] = nid in highlight_ids
+            if nid in node_match_details:
+                data["keyword_occurrences"] = node_match_details[nid]["occurrences"]
+                data["matched_keywords"] = node_match_details[nid]["matched_keywords"]
             children = self.parent_to_children.get(nid, [])
             visible_children = sum(1 for c in children if c in included_node_ids)
             data["expanded"] = len(children) > 0 and visible_children > 0
@@ -701,52 +759,95 @@ class XMLGraphWorkspace:
         )
 
     def search_subgraph(
-        self, query: str, max_results: int = 25, include_children: bool = True
+        self, query: str, max_results: int = 15, include_children: bool = True
     ) -> Dict[str, Any]:
-        q = query.strip()
-        if not q:
+        """
+        Trajectory-ranking search engine:
+        1. Splits `query` into semicolon-separated keywords.
+        2. Extracts ALL trajectories (connected paths from root `n_0` to final `code` leaves)
+           containing at least one of the keywords.
+        3. Ranks all matching trajectories by the number of keyword occurrences found along the trajectory.
+        4. Returns the subgraph corresponding to the top N (`max_results`) ranked trajectories.
+        """
+        raw_keywords = [k.strip() for k in query.split(";") if k.strip()]
+        if not raw_keywords:
             return self.get_initial_subgraph()
 
-        q_lower = q.lower()
-        q_upper = q.upper()
+        keywords: List[Tuple[str, str, Optional[re.Pattern]]] = []
+        seen_kw: Set[str] = set()
+        for rk in raw_keywords:
+            kl = rk.lower()
+            if kl not in seen_kw:
+                seen_kw.add(kl)
+                prefix = r"\b" if kl[0].isalnum() else ""
+                suffix = r"\b" if kl[-1].isalnum() else ""
+                pat = re.compile(rf"{prefix}{re.escape(kl)}{suffix}") if (prefix or suffix) else None
+                keywords.append((kl, rk, pat))
 
-        matched_ids: List[str] = []
-
-        # 1. Exact ICD-10 code match (e.g., "Q27.8" or "F44.4")
-        if q_upper in self.code_to_node_id:
-            matched_ids = [self.code_to_node_id[q_upper]]
-        else:
-            # 2. Term search: prioritize exact title match first!
-            exact_matches: List[str] = []
-            starts_with: List[str] = []
-            contains: List[str] = []
-
-            for nid, ndata in self.nodes.items():
-                if ndata["tag"] in ("ICD10CM.index", "letter", "code", "see", "seeAlso", "manif", "seecat", "subcat"):
-                    continue
-                title_val = (ndata.get("title") or "").strip()
-                title_lower = title_val.lower()
-                full_title_lower = f"{title_val} {ndata.get('nemod', '')}".strip().lower()
-
-                if title_lower == q_lower or full_title_lower == q_lower:
-                    exact_matches.append(nid)
-                elif not exact_matches:
-                    if title_lower.startswith(q_lower):
-                        if len(starts_with) < max_results:
-                            starts_with.append(nid)
-                    elif q_lower in title_lower and len(starts_with) == 0 and len(contains) < max_results:
-                        contains.append(nid)
-
-            if exact_matches:
-                # Prefer mainTerm exact matches if available, otherwise all exact matches up to max_results
-                main_term_exact = [nid for nid in exact_matches if self.nodes[nid]["tag"] == "mainTerm"]
-                matched_ids = (main_term_exact or exact_matches)[:max_results]
-            elif starts_with:
-                matched_ids = starts_with[:max_results]
+        # Check which keywords have whole-word matches in the graph; fall back to substring only if 0 whole-word matches
+        use_word_boundary: List[bool] = []
+        for kl, _, pat in keywords:
+            if pat is None:
+                use_word_boundary.append(False)
             else:
-                matched_ids = contains[:max_results]
+                has_wb = any(pat.search(stext) for stext in self.node_search_text.values() if kl in stext)
+                use_word_boundary.append(has_wb)
 
-        if not matched_ids:
+        node_match_details: Dict[str, Dict[str, Any]] = {}
+        traj_title_occurrences: Counter = Counter()
+        traj_title_kw_mask: Dict[int, int] = defaultdict(int)
+        traj_nemod_kw_mask: Dict[int, int] = defaultdict(int)
+        traj_exact_hits: Counter = Counter()
+
+        # Scan all indexed nodes and accumulate keyword occurrence counts onto root-to-code trajectories
+        for nid, stext in self.node_search_text.items():
+            if not stext:
+                continue
+            t_ids = self.node_to_trajectory_ids.get(nid)
+            if not t_ids:
+                continue
+            occ_count = 0
+            title_occ_count = 0
+            title_kw_mask = 0
+            nemod_kw_mask = 0
+            exact_count = 0
+            matched_kws: List[str] = []
+            ntitle = self.node_title_lower.get(nid, "")
+            for kw_idx, (kl, kdisp, pat) in enumerate(keywords):
+                if kl not in stext:
+                    continue
+                if use_word_boundary[kw_idx] and pat is not None:
+                    matched = bool(pat.search(stext))
+                    in_title = bool(pat.search(ntitle)) if ntitle else False
+                else:
+                    matched = True
+                    in_title = kl in ntitle
+                if matched:
+                    occ_count += 1
+                    if in_title:
+                        title_occ_count += 1
+                        title_kw_mask |= 1 << kw_idx
+                    else:
+                        nemod_kw_mask |= 1 << kw_idx
+                    matched_kws.append(kdisp)
+                    if ntitle == kl or stext == kl:
+                        exact_count += 1
+            if occ_count > 0:
+                node_match_details[nid] = {
+                    "occurrences": occ_count,
+                    "matched_keywords": matched_kws,
+                }
+                for tid in t_ids:
+                    if title_occ_count > 0:
+                        traj_title_occurrences[tid] += title_occ_count
+                        traj_title_kw_mask[tid] |= title_kw_mask
+                    if nemod_kw_mask:
+                        traj_nemod_kw_mask[tid] |= nemod_kw_mask
+                    if exact_count > 0:
+                        traj_exact_hits[tid] += exact_count
+
+        all_matching_tids = set(traj_title_kw_mask.keys()) | set(traj_nemod_kw_mask.keys())
+        if not all_matching_tids:
             return {
                 "mode": "document",
                 "nodes": [],
@@ -754,59 +855,88 @@ class XMLGraphWorkspace:
                 "node_count": 0,
                 "edge_count": 0,
                 "matched_count": 0,
+                "total_matching_trajectories": 0,
+                "top_n": max_results,
+                "keywords": [kdisp for _, kdisp, _ in keywords],
+                "trajectories": [],
                 "query": query,
             }
 
-        # Build the strict set of:
-        # (a) matched nodes M
-        # (b) nodes directly connected to M (or M's subterm hierarchy)
-        # (c) the upward ancestor hierarchy of M and its directly connected nodes
-        core_nodes: Set[str] = set(matched_ids)
+        traj_occurrences: Dict[int, int] = {}
+        traj_kw_mask: Dict[int, int] = {}
+        for tid in all_matching_tids:
+            t_mask = traj_title_kw_mask.get(tid, 0)
+            n_mask = traj_nemod_kw_mask.get(tid, 0)
+            extra_nemod = n_mask & ~t_mask
+            traj_occurrences[tid] = traj_title_occurrences.get(tid, 0) + extra_nemod.bit_count()
+            traj_kw_mask[tid] = t_mask | n_mask
+
+        # Rank trajectories by:
+        # 1. Total keyword occurrences along the trajectory (descending)
+        # 2. Number of distinct user keywords matched along the trajectory (descending)
+        # 3. Primary node title/code occurrences (descending, preferring title hits over parenthetical nemod hits)
+        # 4. Exact node title/code matches along the trajectory (descending)
+        # 5. Shorter trajectory path (ascending depth)
+        # 6. Document order tie-breaker
+        ranked_tids = sorted(
+            all_matching_tids,
+            key=lambda tid: (
+                traj_occurrences[tid],
+                traj_kw_mask[tid].bit_count(),
+                traj_title_occurrences.get(tid, 0),
+                traj_exact_hits.get(tid, 0),
+                -len(self.trajectories[tid]["nodes"]),
+                -tid,
+            ),
+            reverse=True,
+        )
+
+        top_tids = ranked_tids[:max_results]
+        included_nodes: Set[str] = set()
         allowed_semantic_edges: Set[str] = set()
+        highlighted_nodes: Set[str] = set()
+        ranked_trajectories_payload: List[Dict[str, Any]] = []
 
-        def collect_subterm_hierarchy(parent_nid: str) -> None:
-            for cid in self.parent_to_children.get(parent_nid, []):
-                core_nodes.add(cid)
-                # Direct semantic targets (excluding SEE_ALSO) of this subterm
-                for sedge in self.node_semantic_edges.get(cid, []):
-                    if sedge.get("edge_type") == "SEE_ALSO":
-                        continue
-                    if sedge["source"] == cid:
-                        core_nodes.add(sedge["target"])
-                        allowed_semantic_edges.add(sedge["id"])
-                collect_subterm_hierarchy(cid)
+        for rank_idx, tid in enumerate(top_tids, start=1):
+            traj = self.trajectories[tid]
+            for nid in traj["nodes"]:
+                included_nodes.add(nid)
+                if nid in node_match_details:
+                    highlighted_nodes.add(nid)
+            allowed_semantic_edges.add(traj["code_edge_id"])
 
-        for mid in matched_ids:
-            mnode = self.nodes.get(mid, {})
-            # Direct parent of mid
-            if mnode.get("parent_id"):
-                core_nodes.add(mnode["parent_id"])
+            kw_mask = traj_kw_mask[tid]
+            traj_kws = [kdisp for idx, (_, kdisp, _) in enumerate(keywords) if (kw_mask & (1 << idx))]
 
-            # Direct semantic connections of mid (excluding SEE_ALSO edges)
-            for sedge in self.node_semantic_edges.get(mid, []):
-                if sedge.get("edge_type") == "SEE_ALSO":
-                    continue
-                if mnode.get("tag") in ("mainTerm", "term", "entity") and sedge["source"] != mid:
-                    continue
-                core_nodes.add(sedge["source"])
-                core_nodes.add(sedge["target"])
-                allowed_semantic_edges.add(sedge["id"])
-
-            # Downward subterm hierarchy of mid (if mid is a term/mainTerm)
-            if include_children and mnode.get("tag") in ("mainTerm", "term", "entity"):
-                collect_subterm_hierarchy(mid)
-
-        # Add upward ancestor hierarchy (up to ICD10CM.index root) for all included nodes
-        included = self._add_ancestor_hierarchy(core_nodes)
+            ranked_trajectories_payload.append(
+                {
+                    "rank": rank_idx,
+                    "trajectory_id": tid,
+                    "keyword_occurrences": traj_occurrences[tid],
+                    "distinct_keywords_matched": kw_mask.bit_count(),
+                    "matched_keywords": traj_kws,
+                    "code": traj["code"],
+                    "code_id": traj["code_id"],
+                    "term_id": traj["term_id"],
+                    "breadcrumb": traj["breadcrumb"],
+                    "nodes": list(traj["nodes"]),
+                    "edges": list(traj["edges"]),
+                }
+            )
 
         res = self._build_subgraph_payload(
-            included,
+            included_nodes,
             include_semantic=False,
-            highlight_ids=set(matched_ids),
+            highlight_ids=highlighted_nodes,
             allowed_semantic_edge_ids=allowed_semantic_edges,
+            node_match_details=node_match_details,
         )
-        res["matched_count"] = len(matched_ids)
-        res["matched_ids"] = matched_ids
+        res["matched_count"] = len(ranked_trajectories_payload)
+        res["total_matching_trajectories"] = len(ranked_tids)
+        res["top_n"] = max_results
+        res["keywords"] = [kdisp for _, kdisp, _ in keywords]
+        res["trajectories"] = ranked_trajectories_payload
+        res["matched_ids"] = list(highlighted_nodes)
         res["query"] = query
         return res
 
@@ -857,3 +987,579 @@ class XMLGraphWorkspace:
             or len(self.code_to_terms.get(node_id, [])),
             "semantic_links": self.node_semantic_edges.get(node_id, [])[:30],
         }
+
+    TAG_TO_GQL_LABEL: Dict[str, str] = {
+        "ICD10CM.index": "IndexRoot",
+        "mainTerm": "MainTerm",
+        "term": "SubTerm",
+        "code": "ICD10Code",
+        "see": "SeeReference",
+        "seeAlso": "SeeAlsoReference",
+        "manif": "ManifestationCode",
+        "seecat": "SeeCategory",
+        "subcat": "SubCategory",
+        "xsd:element": "XsdElement",
+        "xsd:group": "XsdGroup",
+        "xsd:attribute": "XsdAttribute",
+    }
+
+    @staticmethod
+    def _generate_database_ddls() -> Dict[str, Any]:
+        bigquery_ddl = """-- ============================================================================
+-- Google Cloud BigQuery Graph Ingestion DDL (ISO GQL Property Graph)
+-- ============================================================================
+
+-- 1. Create Node Table (load from `nodes` array or `.jsonl` where record_type = 'node')
+CREATE TABLE IF NOT EXISTS `project_id.dataset_id.xml_graph_nodes` (
+  node_id STRING NOT NULL OPTIONS(description="Unique primary key of the graph node"),
+  node_label STRING NOT NULL OPTIONS(description="GQL node label (IndexRoot, MainTerm, SubTerm, ICD10Code, SeeReference)"),
+  xml_tag STRING OPTIONS(description="Source XML or XSD element tag name"),
+  title STRING OPTIONS(description="Clinical term title, code value, or element name"),
+  display_label STRING OPTIONS(description="Human-readable display label"),
+  nemod STRING OPTIONS(description="Non-essential modifier text enclosed in parentheses"),
+  code STRING OPTIONS(description="Associated ICD-10-CM diagnosis code if present"),
+  level INT64 OPTIONS(description="Hierarchical indentation level (0=root, 1..9=subterm depth)"),
+  depth INT64 OPTIONS(description="Tree depth from XML document root"),
+  parent_id STRING OPTIONS(description="Parent node_id in the XML hierarchy"),
+  breadcrumb STRING OPTIONS(description="Full hierarchical path from root to this node"),
+  source_line INT64 OPTIONS(description="Line number in the original XML document"),
+  properties JSON OPTIONS(description="Additional XML element properties and attributes"),
+  PRIMARY KEY (node_id) NOT ENFORCED
+);
+
+-- 2. Create Edge Table (load from `edges` array or `.jsonl` where record_type = 'edge')
+CREATE TABLE IF NOT EXISTS `project_id.dataset_id.xml_graph_edges` (
+  edge_id STRING NOT NULL OPTIONS(description="Unique primary key of the directed edge"),
+  source_id STRING NOT NULL OPTIONS(description="Source node_id referencing xml_graph_nodes.node_id"),
+  destination_id STRING NOT NULL OPTIONS(description="Destination node_id referencing xml_graph_nodes.node_id"),
+  edge_label STRING NOT NULL OPTIONS(description="Human-readable edge label (e.g., HAS_MAINTERM, SUBTERM, CODES_TO, SEE)"),
+  edge_type STRING NOT NULL OPTIONS(description="Semantic edge category (HIERARCHY, CODES_TO, SEE, SEE_ALSO, MANIF)"),
+  ref_text STRING OPTIONS(description="Cross-reference target text for SEE / SEE_ALSO edges"),
+  properties JSON OPTIONS(description="Additional edge metadata"),
+  PRIMARY KEY (edge_id) NOT ENFORCED,
+  FOREIGN KEY (source_id) REFERENCES `project_id.dataset_id.xml_graph_nodes`(node_id) NOT ENFORCED,
+  FOREIGN KEY (destination_id) REFERENCES `project_id.dataset_id.xml_graph_nodes`(node_id) NOT ENFORCED
+);
+
+-- 3. Create BigQuery Property Graph (follows BigQuery Graph best practices: safe aliases, PK/FK keys, scoped properties)
+CREATE OR REPLACE PROPERTY GRAPH `project_id.dataset_id.xml_knowledge_graph`
+  NODE TABLES (
+    `project_id.dataset_id.xml_graph_nodes` AS GraphNode
+      KEY (node_id)
+      LABEL GraphNode
+      PROPERTIES (
+        node_id,
+        node_label,
+        xml_tag,
+        title,
+        display_label,
+        nemod,
+        code,
+        level,
+        depth,
+        parent_id,
+        breadcrumb,
+        source_line
+      )
+  )
+  EDGE TABLES (
+    `project_id.dataset_id.xml_graph_edges` AS GraphEdge
+      KEY (edge_id)
+      SOURCE KEY (source_id) REFERENCES GraphNode (node_id)
+      DESTINATION KEY (destination_id) REFERENCES GraphNode (node_id)
+      LABEL GraphEdge
+      PROPERTIES (
+        edge_id,
+        edge_label,
+        edge_type,
+        ref_text
+      )
+  );"""
+
+        spanner_ddl = """-- ============================================================================
+-- Google Cloud Spanner Graph Ingestion DDL (GoogleSQL ISO GQL Property Graph)
+-- ============================================================================
+
+-- 1. Create Node Table
+CREATE TABLE XmlGraphNode (
+  node_id STRING(MAX) NOT NULL,
+  node_label STRING(MAX) NOT NULL,
+  xml_tag STRING(MAX),
+  title STRING(MAX),
+  display_label STRING(MAX),
+  nemod STRING(MAX),
+  code STRING(MAX),
+  level INT64,
+  depth INT64,
+  parent_id STRING(MAX),
+  breadcrumb STRING(MAX),
+  source_line INT64,
+  properties JSON
+) PRIMARY KEY (node_id);
+
+-- 2. Create Edge Table
+CREATE TABLE XmlGraphEdge (
+  edge_id STRING(MAX) NOT NULL,
+  source_id STRING(MAX) NOT NULL,
+  destination_id STRING(MAX) NOT NULL,
+  edge_label STRING(MAX) NOT NULL,
+  edge_type STRING(MAX) NOT NULL,
+  ref_text STRING(MAX),
+  properties JSON,
+  CONSTRAINT FK_XmlGraphEdge_Source FOREIGN KEY (source_id) REFERENCES XmlGraphNode (node_id),
+  CONSTRAINT FK_XmlGraphEdge_Dest FOREIGN KEY (destination_id) REFERENCES XmlGraphNode (node_id)
+) PRIMARY KEY (edge_id);
+
+-- 3. Create Spanner Property Graph
+CREATE OR REPLACE PROPERTY GRAPH XmlKnowledgeGraph
+  NODE TABLES (
+    XmlGraphNode AS GraphNode
+      KEY (node_id)
+      LABEL GraphNode
+      PROPERTIES (
+        node_id,
+        node_label,
+        xml_tag,
+        title,
+        display_label,
+        nemod,
+        code,
+        level,
+        depth,
+        parent_id,
+        breadcrumb,
+        source_line
+      )
+  )
+  EDGE TABLES (
+    XmlGraphEdge AS GraphEdge
+      KEY (edge_id)
+      SOURCE KEY (source_id) REFERENCES GraphNode (node_id)
+      DESTINATION KEY (destination_id) REFERENCES GraphNode (node_id)
+      LABEL GraphEdge
+      PROPERTIES (
+        edge_id,
+        edge_label,
+        edge_type,
+        ref_text
+      )
+  );"""
+
+        sample_gql_queries = [
+            {
+                "description": "Find all clinical term trajectories mapping to a specific ICD-10 diagnosis code",
+                "gql": (
+                    "GRAPH `project_id.dataset_id.xml_knowledge_graph`\n"
+                    "MATCH (term:GraphNode)-[e:GraphEdge {edge_type: 'CODES_TO'}]->(code:GraphNode {code: 'Q27.8'})\n"
+                    "RETURN term.node_id, term.breadcrumb, term.nemod, code.code"
+                ),
+            },
+            {
+                "description": "Traverse hierarchical subterms from a MainTerm down 1 to 5 hops to an ICD-10 code",
+                "gql": (
+                    "GRAPH `project_id.dataset_id.xml_knowledge_graph`\n"
+                    "MATCH (main:GraphNode {node_label: 'MainTerm'})-[:GraphEdge {edge_type: 'HIERARCHY'}]->{1,5}"
+                    "(leaf:GraphNode)-[:GraphEdge {edge_type: 'CODES_TO'}]->(c:GraphNode)\n"
+                    "RETURN main.title AS main_term, leaf.breadcrumb AS full_clinical_path, c.title AS icd10_code\n"
+                    "LIMIT 50"
+                ),
+            },
+        ]
+
+        return {
+            "graph_model": "ISO/IEC 39075 GQL Labeled Property Graph (LPG)",
+            "bigquery_graph_ddl": bigquery_ddl,
+            "spanner_graph_ddl": spanner_ddl,
+            "sample_gql_queries": sample_gql_queries,
+        }
+
+    def build_property_graph(
+        self,
+        scope: str = "canvas",
+        node_ids: Optional[List[str]] = None,
+        edge_ids: Optional[List[str]] = None,
+        search_query: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Constructs a formal Property Graph object (NetworkX MultiDiGraph + tabular PG-JSON nodes/edges)
+        designed for LLM comprehension and direct ingestion into BigQuery Graph and Spanner Graph.
+        """
+        G = nx.MultiDiGraph(
+            name="xml_knowledge_graph",
+            xml_source=self.xml_path.name,
+            xsd_schema=self.xsd_path.name,
+            scope=scope,
+        )
+
+        nodes_list: List[Dict[str, Any]] = []
+        edges_list: List[Dict[str, Any]] = []
+        label_counts: Counter = Counter()
+        edge_type_counts: Counter = Counter()
+
+        if scope == "schema":
+            for nid, sdata in self.schema_analyzer.schema_graph.nodes(data=True):
+                tag = sdata.get("tag", "xsd:element")
+                node_label = self.TAG_TO_GQL_LABEL.get(tag, "XsdSchemaNode")
+                props = dict(sdata.get("properties", {}))
+                record = {
+                    "id": nid,
+                    "node_id": nid,
+                    "label": node_label,
+                    "node_label": node_label,
+                    "xml_tag": tag,
+                    "title": sdata.get("label", nid),
+                    "display_label": sdata.get("label", nid),
+                    "nemod": None,
+                    "code": None,
+                    "level": 0,
+                    "depth": 0,
+                    "parent_id": None,
+                    "breadcrumb": f"XSD Schema › {sdata.get('label', nid)}",
+                    "source_line": None,
+                    "properties": props,
+                }
+                G.add_node(nid, **record)
+                nodes_list.append(record)
+                label_counts[node_label] += 1
+
+            for u, v, edata in self.schema_analyzer.schema_graph.edges(data=True):
+                eid = edata.get("id", f"e_{u}_{v}")
+                etype = edata.get("edge_type", "SCHEMA_RELATION")
+                elabel = edata.get("label", etype)
+                eprops = {
+                    k: val
+                    for k, val in edata.items()
+                    if k not in ("id", "source", "target", "label", "edge_type")
+                }
+                erecord = {
+                    "id": eid,
+                    "edge_id": eid,
+                    "source": u,
+                    "target": v,
+                    "source_id": u,
+                    "destination_id": v,
+                    "label": elabel,
+                    "edge_label": elabel,
+                    "edge_type": etype,
+                    "ref_text": None,
+                    "properties": eprops,
+                }
+                G.add_edge(u, v, key=eid, **erecord)
+                edges_list.append(erecord)
+                edge_type_counts[etype] += 1
+        else:
+            if scope == "canvas" and node_ids:
+                included_nids: Set[str] = {nid for nid in node_ids if nid in self.nodes}
+            else:
+                included_nids = set(self.nodes.keys())
+                scope = "full"
+
+            allowed_eids: Optional[Set[str]] = set(edge_ids) if (scope == "canvas" and edge_ids) else None
+            seen_edges: Set[str] = set()
+
+            for nid in included_nids:
+                ndata = self.nodes.get(nid)
+                if not ndata:
+                    continue
+                tag = ndata.get("tag", "entity")
+                node_label = self.TAG_TO_GQL_LABEL.get(tag, "XmlEntity")
+                props = dict(ndata.get("properties", {}))
+                attrs = dict(ndata.get("attributes", {}))
+                merged_props = {**props, **{f"@{k}": v for k, v in attrs.items()}}
+                code_val = props.get("code") or (ndata.get("title") if tag == "code" else None)
+                if isinstance(code_val, list):
+                    code_val = code_val[0]
+
+                record = {
+                    "id": nid,
+                    "node_id": nid,
+                    "label": node_label,
+                    "node_label": node_label,
+                    "xml_tag": tag,
+                    "title": ndata.get("title", ""),
+                    "display_label": ndata.get("label", ""),
+                    "nemod": ndata.get("nemod") or None,
+                    "code": code_val,
+                    "level": int(ndata.get("level", 0)),
+                    "depth": int(ndata.get("depth", 0)),
+                    "parent_id": ndata.get("parent_id") if ndata.get("parent_id") in included_nids else None,
+                    "breadcrumb": ndata.get("breadcrumb", ""),
+                    "source_line": int(ndata["line"]) if ndata.get("line") else None,
+                    "properties": merged_props,
+                }
+                G.add_node(nid, **record)
+                nodes_list.append(record)
+                label_counts[node_label] += 1
+
+            for nid in included_nids:
+                ndata = self.nodes.get(nid)
+                if not ndata:
+                    continue
+                pid = ndata.get("parent_id")
+                if pid and pid in included_nids:
+                    eid = f"e_hier_{pid}_{nid}"
+                    if (allowed_eids is None or eid in allowed_eids) and eid not in seen_edges:
+                        seen_edges.add(eid)
+                        elabel = f"HAS_{ndata['tag'].upper()}"
+                        if ndata["tag"] == "term":
+                            elabel = f"SUBTERM_L{ndata.get('level', 1)}"
+                        erecord = {
+                            "id": eid,
+                            "edge_id": eid,
+                            "source": pid,
+                            "target": nid,
+                            "source_id": pid,
+                            "destination_id": nid,
+                            "label": elabel,
+                            "edge_label": elabel,
+                            "edge_type": "HIERARCHY",
+                            "ref_text": None,
+                            "properties": {"child_level": int(ndata.get("level", 0))},
+                        }
+                        G.add_edge(pid, nid, key=eid, **erecord)
+                        edges_list.append(erecord)
+                        edge_type_counts["HIERARCHY"] += 1
+
+                for sedge in self.node_semantic_edges.get(nid, []):
+                    u = sedge["source"]
+                    v = sedge["target"]
+                    eid = sedge["id"]
+                    if u in included_nids and v in included_nids:
+                        if allowed_eids is not None and eid not in allowed_eids:
+                            continue
+                        if eid not in seen_edges:
+                            seen_edges.add(eid)
+                            etype = sedge.get("edge_type", "SEMANTIC_REF")
+                            elabel = sedge.get("label", etype)
+                            ref_txt = sedge.get("ref_text")
+                            erecord = {
+                                "id": eid,
+                                "edge_id": eid,
+                                "source": u,
+                                "target": v,
+                                "source_id": u,
+                                "destination_id": v,
+                                "label": elabel,
+                                "edge_label": elabel,
+                                "edge_type": etype,
+                                "ref_text": ref_txt,
+                                "properties": {"ref_text": ref_txt} if ref_txt else {},
+                            }
+                            G.add_edge(u, v, key=eid, **erecord)
+                            edges_list.append(erecord)
+                            edge_type_counts[etype] += 1
+
+        # Build natural-language trajectories summary for LLM reading
+        sample_trajectories: List[str] = []
+        for e in edges_list:
+            if e["edge_type"] in ("CODES_TO", "SEE", "SEE_ALSO", "MANIF"):
+                src_node = G.nodes.get(e["source_id"], {})
+                dst_node = G.nodes.get(e["destination_id"], {})
+                bc = src_node.get("breadcrumb") or src_node.get("title") or e["source_id"]
+                target_title = dst_node.get("title") or e["destination_id"]
+                sample_trajectories.append(f"{bc} -[{e['edge_type']}]-> {target_title}")
+                if len(sample_trajectories) >= 40:
+                    break
+
+        created_at = datetime.now(timezone.utc).isoformat()
+        metadata = {
+            "graph_name": "xml_knowledge_graph",
+            "created_at": created_at,
+            "xml_document": self.xml_path.name,
+            "xsd_schema": self.xsd_path.name,
+            "xsd_valid": self.is_valid,
+            "scope": scope,
+            "search_query": search_query or None,
+            "node_count": G.number_of_nodes(),
+            "edge_count": G.number_of_edges(),
+            "node_label_counts": dict(label_counts),
+            "edge_type_counts": dict(edge_type_counts),
+        }
+
+        llm_context = {
+            "overview": (
+                f"This Labeled Property Graph (LPG) represents the XML document '{self.xml_path.name}' "
+                f"validated against the XML Schema '{self.xsd_path.name}'. "
+                "It captures both the hierarchical taxonomic tree (IndexRoot -> MainTerm -> SubTerm levels 1..9) "
+                "and semantic cross-references (CODES_TO -> ICD10Code hubs, SEE / SEE_ALSO -> cross-referenced terms)."
+            ),
+            "how_to_read": {
+                "nodes": (
+                    "Each item in `nodes` has a unique `node_id`, a GQL `node_label` (e.g., MainTerm, SubTerm, ICD10Code), "
+                    "a `title`, optional `nemod` (non-essential clinical modifiers), `breadcrumb` (full root-to-node path), "
+                    "and `properties`."
+                ),
+                "edges": (
+                    "Each item in `edges` connects `source_id` -> `destination_id` with `edge_type` in "
+                    "{HIERARCHY, CODES_TO, SEE, SEE_ALSO, MANIF, SEECAT, SUBCAT}."
+                ),
+            },
+            "clinical_coding_paths_preview": sample_trajectories,
+        }
+
+        return {
+            "nx_graph": G,
+            "format": "PG-JSON (ISO GQL / BigQuery Graph & Spanner Graph Property Graph)",
+            "format_version": "1.0",
+            "metadata": metadata,
+            "llm_context": llm_context,
+            "database_ingestion": self._generate_database_ddls(),
+            "nodes": nodes_list,
+            "edges": edges_list,
+        }
+
+    def serialize_property_graph(
+        self,
+        scope: str = "canvas",
+        fmt: str = "pg_json",
+        node_ids: Optional[List[str]] = None,
+        edge_ids: Optional[List[str]] = None,
+        search_query: Optional[str] = None,
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Builds the Property Graph object and serializes it into the requested format:
+        - 'pg_json': Property Graph JSON (.json) - Self-contained LLM + BigQuery/Spanner Graph JSON
+        - 'pg_jsonl': Property Graph JSONL (.jsonl) - Newline-Delimited JSON for direct `bq load` & streaming
+        - 'gql_sql': GoogleSQL script (.sql) - Executable DDL + INSERT statements for BigQuery/Spanner Graph
+        """
+        pg = self.build_property_graph(
+            scope=scope,
+            node_ids=node_ids,
+            edge_ids=edge_ids,
+            search_query=search_query,
+        )
+        meta = pg["metadata"]
+
+        if fmt == "pg_jsonl":
+            lines: List[str] = []
+            header_record = {
+                "record_type": "graph_metadata",
+                "format": "PG-JSONL",
+                "metadata": meta,
+                "llm_context": pg["llm_context"],
+                "database_ingestion": pg["database_ingestion"],
+            }
+            lines.append(json.dumps(header_record, ensure_ascii=False))
+            for n in pg["nodes"]:
+                lines.append(
+                    json.dumps(
+                        {
+                            "record_type": "node",
+                            "node_id": n["node_id"],
+                            "node_label": n["node_label"],
+                            "xml_tag": n["xml_tag"],
+                            "title": n["title"],
+                            "display_label": n["display_label"],
+                            "nemod": n["nemod"],
+                            "code": n["code"],
+                            "level": n["level"],
+                            "depth": n["depth"],
+                            "parent_id": n["parent_id"],
+                            "breadcrumb": n["breadcrumb"],
+                            "source_line": n["source_line"],
+                            "properties": n["properties"],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            for e in pg["edges"]:
+                lines.append(
+                    json.dumps(
+                        {
+                            "record_type": "edge",
+                            "edge_id": e["edge_id"],
+                            "source_id": e["source_id"],
+                            "destination_id": e["destination_id"],
+                            "edge_label": e["edge_label"],
+                            "edge_type": e["edge_type"],
+                            "ref_text": e["ref_text"],
+                            "properties": e["properties"],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            return "\n".join(lines) + "\n", meta
+
+        if fmt == "gql_sql":
+            def sql_str(val: Optional[Any]) -> str:
+                if val is None:
+                    return "NULL"
+                escaped = str(val).replace("\\", "\\\\").replace("'", "\\'").replace("\n", " ")
+                return f"'{escaped}'"
+
+            def sql_json(val: Dict[str, Any]) -> str:
+                raw = json.dumps(val, ensure_ascii=False).replace("\\", "\\\\").replace("'", "\\'")
+                return f"JSON '{raw}'"
+
+            sql_parts: List[str] = [
+                "-- ============================================================================",
+                f"-- Property Graph SQL Export: {meta['xml_document']} ({meta['node_count']} nodes, {meta['edge_count']} edges)",
+                f"-- Generated at: {meta['created_at']}",
+                "-- Compatible with Google Cloud BigQuery Graph & Cloud Spanner Graph",
+                "-- ============================================================================",
+                "",
+                pg["database_ingestion"]["bigquery_graph_ddl"],
+                "",
+                "/* --- Cloud Spanner Graph Equivalent DDL ---",
+                pg["database_ingestion"]["spanner_graph_ddl"],
+                "*/",
+                "",
+            ]
+
+            max_sql_rows = 5000
+            nodes_slice = pg["nodes"][:max_sql_rows]
+            edges_slice = pg["edges"][:max_sql_rows]
+
+            if nodes_slice:
+                sql_parts.append("-- Insert Graph Nodes")
+                batch_size = 200
+                for i in range(0, len(nodes_slice), batch_size):
+                    batch = nodes_slice[i : i + batch_size]
+                    sql_parts.append(
+                        "INSERT INTO `project_id.dataset_id.xml_graph_nodes` "
+                        "(node_id, node_label, xml_tag, title, display_label, nemod, code, level, depth, parent_id, breadcrumb, source_line, properties) VALUES"
+                    )
+                    row_strs = []
+                    for n in batch:
+                        row_strs.append(
+                            f"  ({sql_str(n['node_id'])}, {sql_str(n['node_label'])}, {sql_str(n['xml_tag'])}, "
+                            f"{sql_str(n['title'])}, {sql_str(n['display_label'])}, {sql_str(n['nemod'])}, "
+                            f"{sql_str(n['code'])}, {n['level']}, {n['depth']}, {sql_str(n['parent_id'])}, "
+                            f"{sql_str(n['breadcrumb'])}, {n['source_line'] if n['source_line'] is not None else 'NULL'}, "
+                            f"{sql_json(n['properties'])})"
+                        )
+                    sql_parts.append(",\n".join(row_strs) + ";\n")
+
+            if edges_slice:
+                sql_parts.append("-- Insert Graph Edges")
+                batch_size = 200
+                for i in range(0, len(edges_slice), batch_size):
+                    batch = edges_slice[i : i + batch_size]
+                    sql_parts.append(
+                        "INSERT INTO `project_id.dataset_id.xml_graph_edges` "
+                        "(edge_id, source_id, destination_id, edge_label, edge_type, ref_text, properties) VALUES"
+                    )
+                    row_strs = []
+                    for e in batch:
+                        row_strs.append(
+                            f"  ({sql_str(e['edge_id'])}, {sql_str(e['source_id'])}, {sql_str(e['destination_id'])}, "
+                            f"{sql_str(e['edge_label'])}, {sql_str(e['edge_type'])}, {sql_str(e['ref_text'])}, "
+                            f"{sql_json(e['properties'])})"
+                        )
+                    sql_parts.append(",\n".join(row_strs) + ";\n")
+
+            return "\n".join(sql_parts), meta
+
+        # Default: 'pg_json' (Property Graph JSON)
+        payload = {
+            "format": pg["format"],
+            "format_version": pg["format_version"],
+            "metadata": meta,
+            "llm_context": pg["llm_context"],
+            "database_ingestion": pg["database_ingestion"],
+            "nodes": pg["nodes"],
+            "edges": pg["edges"],
+        }
+        indent = 2 if meta["node_count"] <= 5000 else None
+        return json.dumps(payload, indent=indent, ensure_ascii=False), meta
+

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -15,10 +15,12 @@ from app.graph_engine import XMLGraphWorkspace
 BASE_DIR = Path(__file__).resolve().parent.parent
 XML_DOCS_DIR = BASE_DIR / "xml_documents"
 XML_SCHEMAS_DIR = BASE_DIR / "xml_schemas"
+SAVED_GRAPHS_DIR = BASE_DIR / "saved_graphs"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 XML_DOCS_DIR.mkdir(parents=True, exist_ok=True)
 XML_SCHEMAS_DIR.mkdir(parents=True, exist_ok=True)
+SAVED_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
@@ -170,13 +172,15 @@ def get_subgraph(
 
 @app.get("/api/search")
 def search_graph(
-    q: str = Query(..., description="Search term title or ICD-10 code"),
-    max_results: int = Query(18, ge=1, le=80),
+    q: str = Query(..., description="Semicolon-separated keywords (e.g. 'Abdomen; acute') or ICD-10 code"),
+    top_n: Optional[int] = Query(None, ge=1, le=500, description="Top N ranked trajectories to display"),
+    max_results: int = Query(15, ge=1, le=500),
     include_children: bool = Query(True),
 ):
     ws = get_active_workspace()
+    n = top_n if top_n is not None else max_results
     return ws.search_subgraph(
-        query=q, max_results=max_results, include_children=include_children
+        query=q, max_results=n, include_children=include_children
     )
 
 
@@ -193,3 +197,112 @@ def expand_node(
 def get_node_detail(node_id: str):
     ws = get_active_workspace()
     return ws.get_node_detail(node_id=node_id)
+
+
+class SaveGraphRequest(BaseModel):
+    scope: str = "canvas"  # "canvas" | "full" | "schema"
+    format: str = "pg_json"  # "pg_json" | "pg_jsonl" | "gql_sql"
+    directory: Optional[str] = None
+    filename: str = "icd10cm_graph.pg.json"
+    node_ids: Optional[List[str]] = None
+    edge_ids: Optional[List[str]] = None
+    search_query: Optional[str] = None
+
+
+@app.get("/api/fs/dirs")
+def list_directories(path: Optional[str] = Query(None, description="Directory path to browse")):
+    target = Path(path).expanduser().resolve() if path else SAVED_GRAPHS_DIR.resolve()
+    if not target.exists():
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            target = SAVED_GRAPHS_DIR.resolve()
+    if not target.is_dir():
+        target = target.parent
+
+    subdirs = []
+    try:
+        for entry in sorted(target.iterdir(), key=lambda p: p.name.lower()):
+            if entry.is_dir() and not entry.name.startswith("."):
+                subdirs.append({"name": entry.name, "path": str(entry.resolve())})
+    except PermissionError:
+        pass
+
+    parent_path = str(target.parent.resolve()) if target.parent != target else str(target)
+    return {
+        "current_path": str(target),
+        "parent_path": parent_path,
+        "default_path": str(SAVED_GRAPHS_DIR.resolve()),
+        "workspace_path": str(BASE_DIR.resolve()),
+        "directories": subdirs[:100],
+    }
+
+
+@app.post("/api/save-graph")
+def save_graph_to_disk(req: SaveGraphRequest):
+    ws = get_active_workspace()
+    target_dir = Path(req.directory).expanduser().resolve() if req.directory else SAVED_GRAPHS_DIR.resolve()
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Cannot create directory '{target_dir}': {exc}") from exc
+
+    safe_name = Path(req.filename.strip() or "graph.pg.json").name
+    ext_map = {"pg_json": ".json", "pg_jsonl": ".jsonl", "gql_sql": ".sql"}
+    expected_ext = ext_map.get(req.format, ".json")
+    if not safe_name.lower().endswith(expected_ext):
+        safe_name = f"{safe_name}{expected_ext}"
+
+    output_path = target_dir / safe_name
+    try:
+        content, meta = ws.serialize_property_graph(
+            scope=req.scope,
+            fmt=req.format,
+            node_ids=req.node_ids,
+            edge_ids=req.edge_ids,
+            search_query=req.search_query,
+        )
+        output_path.write_text(content, encoding="utf-8")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to serialize or write graph file: {exc}") from exc
+
+    return {
+        "status": "ok",
+        "saved_path": str(output_path),
+        "directory": str(target_dir),
+        "filename": safe_name,
+        "size_bytes": output_path.stat().st_size,
+        "format": req.format,
+        "metadata": meta,
+    }
+
+
+@app.post("/api/export-graph")
+def export_graph_stream(req: SaveGraphRequest):
+    ws = get_active_workspace()
+    safe_name = Path(req.filename.strip() or "graph.pg.json").name
+    ext_map = {"pg_json": ".json", "pg_jsonl": ".jsonl", "gql_sql": ".sql"}
+    mime_map = {
+        "pg_json": "application/json; charset=utf-8",
+        "pg_jsonl": "application/x-ndjson; charset=utf-8",
+        "gql_sql": "application/sql; charset=utf-8",
+    }
+    expected_ext = ext_map.get(req.format, ".json")
+    if not safe_name.lower().endswith(expected_ext):
+        safe_name = f"{safe_name}{expected_ext}"
+
+    content, _ = ws.serialize_property_graph(
+        scope=req.scope,
+        fmt=req.format,
+        node_ids=req.node_ids,
+        edge_ids=req.edge_ids,
+        search_query=req.search_query,
+    )
+    return Response(
+        content=content.encode("utf-8"),
+        media_type=mime_map.get(req.format, "application/json; charset=utf-8"),
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}"',
+        },
+    )
+

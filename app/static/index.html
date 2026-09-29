@@ -100,6 +100,10 @@
           class="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 rounded-lg border border-indigo-500/30 font-medium transition">
           + Upload XML/XSD
         </button>
+        <button onclick="openSaveGraphModal()"
+          class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg border border-emerald-500/50 font-semibold shadow transition flex items-center gap-1.5">
+          <span>Save As Graph</span>
+        </button>
       </div>
     </div>
   </header>
@@ -112,25 +116,51 @@
       
       <!-- Search Section -->
       <div class="p-3.5 border-b border-slate-800 space-y-2.5">
-        <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-          Search Term or ICD-10 Code
-        </label>
-        <form onsubmit="handleSearchSubmit(event)" class="flex gap-1.5">
-          <input id="search-input" type="text" placeholder="e.g. Q27.8, Aberrant, Abdomen..."
-            class="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none" />
-          <button type="submit"
-            class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium shrink-0 transition">
-            Find
-          </button>
+        <div class="flex items-center justify-between">
+          <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Keywords (Semicolon-Separated)
+          </label>
+          <span class="text-[10px] text-indigo-400 mono">kw1; kw2; ...</span>
+        </div>
+        <form onsubmit="handleSearchSubmit(event)" class="space-y-2">
+          <div class="flex gap-1.5">
+            <input id="search-input" type="text" placeholder="e.g. Abdomen; acute or Aberrant; artery"
+              class="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none" />
+            <button type="submit"
+              class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium shrink-0 transition">
+              Find
+            </button>
+          </div>
+          <!-- Top N Trajectories Parameter Control -->
+          <div class="flex items-center justify-between bg-slate-950/90 border border-slate-800/90 rounded-lg px-2.5 py-1.5">
+            <label for="top-n-input" class="text-[11px] text-slate-300 font-medium">
+              Top <span class="mono text-indigo-400 font-semibold">N</span> Ranked Trajectories:
+            </label>
+            <div class="flex items-center gap-1">
+              <input id="top-n-input" type="number" min="1" max="500" value="10" onchange="onTopNChange()"
+                class="w-16 bg-slate-900 border border-slate-700 focus:border-indigo-500 rounded px-2 py-0.5 text-xs text-center text-slate-100 mono focus:outline-none" />
+            </div>
+          </div>
         </form>
         <!-- Quick query chips -->
         <div class="flex flex-wrap gap-1 pt-0.5">
           <span class="text-[10px] text-slate-500 mr-1 self-center">Try:</span>
-          <button onclick="quickSearch('Q27.8')" class="px-2 py-0.5 text-[11px] mono rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25">Q27.8 (Shared Code)</button>
-          <button onclick="quickSearch('Aberrant')" class="px-2 py-0.5 text-[11px] rounded bg-slate-800 text-slate-300 hover:bg-slate-700">Aberrant</button>
-          <button onclick="quickSearch('Abdomen, abdominal')" class="px-2 py-0.5 text-[11px] rounded bg-slate-800 text-slate-300 hover:bg-slate-700">Abdomen</button>
-          <button onclick="quickSearch('Q28.1')" class="px-2 py-0.5 text-[11px] mono rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25">Q28.1</button>
+          <button onclick="quickSearch('Abdomen; acute')" class="px-2 py-0.5 text-[11px] rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/25">Abdomen; acute</button>
+          <button onclick="quickSearch('Aberrant; artery; Q27.8')" class="px-2 py-0.5 text-[11px] rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25">Aberrant; artery; Q27.8</button>
+          <button onclick="quickSearch('Diabetes; neuropathy')" class="px-2 py-0.5 text-[11px] rounded bg-slate-800 text-slate-300 hover:bg-slate-700">Diabetes; neuropathy</button>
+          <button onclick="quickSearch('Q27.8')" class="px-2 py-0.5 text-[11px] mono rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25">Q27.8</button>
         </div>
+      </div>
+
+      <!-- Ranked Trajectories Results Panel (visible when a search is active) -->
+      <div id="ranked-trajectories-section" class="hidden p-3.5 border-b border-slate-800 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-emerald-400">
+            Top Ranked Trajectories
+          </span>
+          <span id="ranked-trajectories-badge" class="text-[10px] mono text-slate-400"></span>
+        </div>
+        <div id="ranked-trajectories-list" class="space-y-1.5 max-h-56 overflow-y-auto pr-1 text-xs"></div>
       </div>
 
       <!-- Layout Controls -->
@@ -184,11 +214,11 @@
           </div>
           <div class="h-3 w-px bg-slate-700"></div>
           <div id="telemetry-tip" class="text-[11px] text-indigo-300">
-            Search for a term or ICD-10 code in the left panel to display its graph
+            Enter semicolon-separated keywords in the left panel to rank &amp; display top N trajectories
           </div>
           <button id="btn-restore-search" onclick="restoreFullSearchSubgraph()"
             class="hidden px-2.5 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-md text-[11px] font-medium transition">
-            Show All Search Results
+            Show All Top N Trajectories
           </button>
         </div>
       </div>
@@ -201,7 +231,7 @@
           </div>
           <h3 class="text-sm font-semibold text-slate-200">No Graph Displayed</h3>
           <p class="text-xs text-slate-400">
-            Enter a medical term (e.g. <span class="mono text-slate-300">Aberrant</span>, <span class="mono text-slate-300">Abdomen, abdominal</span>) or an ICD-10 code (e.g. <span class="mono text-amber-300">Q27.8</span>) in the search bar on the left to build and visualize its graph.
+            Enter semicolon-separated keywords (e.g. <span class="mono text-indigo-300">Abdomen; acute</span> or <span class="mono text-emerald-300">Aberrant; artery; Q27.8</span>) and set <span class="mono text-slate-200">Top N</span> on the left to extract and rank root-to-code trajectories.
           </p>
         </div>
       </div>
@@ -220,7 +250,10 @@
         <button onclick="resetCurrentGraph()" class="px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-300 transition">
           Clear / Reset
         </button>
-        <button onclick="exportGraphPNG()" class="px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-emerald-400 transition">
+        <button onclick="openSaveGraphModal()" class="px-2.5 py-1.5 bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-semibold transition">
+          Save As Graph
+        </button>
+        <button onclick="exportGraphPNG()" class="px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-400 transition">
           Export PNG
         </button>
       </div>
@@ -284,6 +317,137 @@
     </div>
   </div>
 
+  <!-- SAVE AS GRAPH MODAL -->
+  <div id="save-graph-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-5 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div>
+          <h3 class="text-sm font-semibold text-slate-100">Save As Property Graph Object</h3>
+          <p class="text-[11px] text-slate-400 mt-0.5">
+            Creates a standardized ISO GQL Labeled Property Graph ready for LLM reasoning, BigQuery Graph, and Spanner Graph.
+          </p>
+        </div>
+        <button onclick="closeSaveGraphModal()" class="text-slate-400 hover:text-slate-200 text-sm px-1.5">✕</button>
+      </div>
+
+      <div class="space-y-3.5 text-xs">
+        <!-- 1. Graph Scope Selection -->
+        <div>
+          <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+            1. Graph Scope to Build &amp; Save
+          </label>
+          <div class="grid grid-cols-3 gap-2">
+            <label class="cursor-pointer bg-slate-950 border border-slate-800 hover:border-indigo-500/60 rounded-xl p-2.5 flex flex-col gap-1">
+              <div class="flex items-center gap-1.5">
+                <input type="radio" name="save-scope" value="canvas" onchange="onSaveScopeOrFormatChange()" class="accent-indigo-500" checked />
+                <span class="font-semibold text-slate-200">Displayed Graph</span>
+              </div>
+              <span id="save-scope-canvas-desc" class="text-[10px] text-slate-400 mono">Visible canvas nodes</span>
+            </label>
+            <label class="cursor-pointer bg-slate-950 border border-slate-800 hover:border-indigo-500/60 rounded-xl p-2.5 flex flex-col gap-1">
+              <div class="flex items-center gap-1.5">
+                <input type="radio" name="save-scope" value="full" onchange="onSaveScopeOrFormatChange()" class="accent-indigo-500" />
+                <span class="font-semibold text-slate-200">Full XML Graph</span>
+              </div>
+              <span id="save-scope-full-desc" class="text-[10px] text-slate-400 mono">All indexed XML nodes</span>
+            </label>
+            <label class="cursor-pointer bg-slate-950 border border-slate-800 hover:border-indigo-500/60 rounded-xl p-2.5 flex flex-col gap-1">
+              <div class="flex items-center gap-1.5">
+                <input type="radio" name="save-scope" value="schema" onchange="onSaveScopeOrFormatChange()" class="accent-indigo-500" />
+                <span class="font-semibold text-slate-200">XSD Schema Graph</span>
+              </div>
+              <span class="text-[10px] text-slate-400 mono">Meta-graph structure</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 2. Graph Representation Format -->
+        <div>
+          <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+            2. Graph Representation Format
+          </label>
+          <select id="save-format-select" onchange="onSaveScopeOrFormatChange()"
+            class="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none">
+            <option value="pg_json" selected>Property Graph JSON (.pg.json) — Recommended (LLM + BigQuery/Spanner Graph DDL &amp; Tabular Nodes/Edges)</option>
+            <option value="pg_jsonl">Property Graph JSONL (.jsonl) — Newline-Delimited JSON for direct `bq load` &amp; Spanner Bulk Import</option>
+            <option value="gql_sql">GoogleSQL Property Graph Script (.sql) — Executable `CREATE TABLE`, `INSERT`, &amp; `CREATE PROPERTY GRAPH` DDL</option>
+          </select>
+          <div id="save-format-hint" class="mt-1.5 text-[11px] text-slate-400 bg-slate-950/70 border border-slate-800/80 rounded-lg px-2.5 py-1.5">
+            <span class="text-emerald-400 font-medium">Why PG-JSON (.pg.json)?</span> Combines an LLM-readable clinical ontology &amp; trajectory summary, ready-to-run BigQuery Graph &amp; Spanner Graph <span class="mono text-slate-200">CREATE PROPERTY GRAPH</span> DDL, and flat primary/foreign-key <span class="mono text-slate-200">nodes</span> and <span class="mono text-slate-200">edges</span> records.
+          </div>
+        </div>
+
+        <!-- 3. Destination Directory & File Name -->
+        <div class="space-y-2.5 pt-1">
+          <div class="flex items-center justify-between">
+            <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              3. Destination Folder &amp; File Name
+            </label>
+            <button type="button" onclick="toggleDirBrowser()"
+              class="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium">
+              Browse Server Folders ▾
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 gap-2">
+            <div>
+              <span class="block text-[11px] text-slate-400 mb-1">Save Directory Path:</span>
+              <div class="flex gap-1.5">
+                <input id="save-dir-input" type="text"
+                  class="flex-1 bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 mono focus:outline-none" />
+                <button type="button" onclick="loadDirectoryBrowser(document.getElementById('save-dir-input').value)"
+                  class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs border border-slate-700">
+                  Open
+                </button>
+              </div>
+            </div>
+
+            <!-- Collapsible Interactive Folder Browser -->
+            <div id="dir-browser-panel" class="hidden bg-slate-950 border border-slate-800 rounded-xl p-2.5 space-y-2">
+              <div class="flex items-center justify-between text-[11px] border-b border-slate-800 pb-1.5">
+                <span id="dir-browser-current" class="mono text-slate-300 truncate pr-2"></span>
+                <div class="flex gap-1 shrink-0">
+                  <button type="button" id="dir-browser-up-btn"
+                    class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] mono">
+                    ↑ Parent Dir
+                  </button>
+                </div>
+              </div>
+              <div id="dir-browser-list" class="max-h-32 overflow-y-auto grid grid-cols-2 gap-1 text-[11px] mono"></div>
+            </div>
+
+            <div>
+              <span class="block text-[11px] text-slate-400 mb-1">File Name:</span>
+              <input id="save-filename-input" type="text"
+                class="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 mono focus:outline-none" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Save Status / Feedback Banner -->
+        <div id="save-graph-status" class="hidden rounded-xl p-3 text-xs space-y-1.5"></div>
+
+        <!-- Modal Footer Actions -->
+        <div class="flex items-center justify-between gap-2 pt-3 border-t border-slate-800">
+          <button type="button" onclick="saveGraphViaOSPicker()"
+            class="px-3 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 font-medium transition">
+            Choose Location via OS Dialog...
+          </button>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="closeSaveGraphModal()"
+              class="px-3 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700">
+              Close
+            </button>
+            <button type="button" id="btn-save-graph-confirm" onclick="saveGraphToServerPath()"
+              class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow transition">
+              Save Graph File
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     let cy = null;
     let currentMode = 'document'; // 'document' | 'schema'
@@ -291,6 +455,8 @@
     let activeWorkspaceSummary = null;
     let hiddenTypes = new Set();
     let searchMatchedIds = [];
+    let currentSearchTrajectories = [];
+    let totalMatchingTrajectories = 0;
     let isTrajectoryIsolated = false;
 
     const NODE_COLORS = {
@@ -531,17 +697,30 @@
     }
 
     function isolateSearchTrajectory(clickedNodeId) {
-      if (!searchMatchedIds || searchMatchedIds.length === 0) return;
+      if (!currentSearchTrajectories || currentSearchTrajectories.length === 0) return;
 
-      // If the user clicked the found search target node itself, show the full search result graph
-      if (searchMatchedIds.includes(clickedNodeId)) {
+      // Clicking the root node restores all Top N trajectories
+      if (clickedNodeId === 'n_0') {
         if (isTrajectoryIsolated) {
           restoreFullSearchSubgraph();
         }
         return;
       }
 
-      const { keepNodes, keepEdges } = computeTrajectoryElements(clickedNodeId, searchMatchedIds);
+      const matchingTrajs = currentSearchTrajectories.filter(t => (t.nodes || []).includes(clickedNodeId));
+      if (matchingTrajs.length === 0 || matchingTrajs.length === currentSearchTrajectories.length) {
+        if (isTrajectoryIsolated && matchingTrajs.length === currentSearchTrajectories.length) {
+          restoreFullSearchSubgraph();
+        }
+        return;
+      }
+
+      const keepNodes = new Set();
+      const keepEdges = new Set();
+      for (const t of matchingTrajs) {
+        (t.nodes || []).forEach(nid => keepNodes.add(nid));
+        (t.edges || []).forEach(eid => keepEdges.add(eid));
+      }
 
       cy.batch(() => {
         cy.nodes().forEach(n => {
@@ -559,12 +738,48 @@
       isTrajectoryIsolated = true;
       document.getElementById('btn-restore-search').classList.remove('hidden');
       const clickedLabel = cy.getElementById(clickedNodeId).data('label') || clickedNodeId;
-      const foundLabel = cy.getElementById(searchMatchedIds[0]).data('label') || searchMatchedIds[0];
       document.getElementById('telemetry-tip').innerText =
-        `Trajectory isolated: "${clickedLabel}" ↔ "${foundLabel}"`;
+        `Isolated ${matchingTrajs.length} trajectory(ies) passing through "${clickedLabel}"`;
 
       runGraphLayout(document.getElementById('layout-select').value);
       updateTelemetryCounts();
+    }
+
+    async function isolateSingleTrajectory(rankIndex) {
+      const traj = currentSearchTrajectories[rankIndex];
+      if (!traj) return;
+
+      const keepNodes = new Set(traj.nodes || []);
+      const keepEdges = new Set(traj.edges || []);
+
+      cy.batch(() => {
+        cy.nodes().forEach(n => {
+          const visible = keepNodes.has(n.id()) && !hiddenTypes.has(n.data('node_type'));
+          n.style('display', visible ? 'element' : 'none');
+        });
+        cy.edges().forEach(e => {
+          const visible = keepEdges.has(e.id()) &&
+            keepNodes.has(e.data('source')) &&
+            keepNodes.has(e.data('target'));
+          e.style('display', visible ? 'element' : 'none');
+        });
+      });
+
+      isTrajectoryIsolated = true;
+      document.getElementById('btn-restore-search').classList.remove('hidden');
+      document.getElementById('telemetry-tip').innerText =
+        `Trajectory #${traj.rank} (${traj.keyword_occurrences} keyword occurrence${traj.keyword_occurrences === 1 ? '' : 's'}): → ${traj.code}`;
+
+      runGraphLayout(document.getElementById('layout-select').value);
+      updateTelemetryCounts();
+
+      const leafNode = cy.getElementById(traj.term_id || traj.code_id);
+      if (leafNode.length > 0) {
+        cy.elements().unselect();
+        leafNode.select();
+        selectedNodeId = leafNode.id();
+        await inspectNode(selectedNodeId);
+      }
     }
 
     function restoreFullSearchSubgraph() {
@@ -580,7 +795,7 @@
       isTrajectoryIsolated = false;
       document.getElementById('btn-restore-search').classList.add('hidden');
       document.getElementById('telemetry-tip').innerText =
-        'Search active: Click any node to isolate its trajectory to the found term/code';
+        `Showing Top ${currentSearchTrajectories.length} of ${totalMatchingTrajectories.toLocaleString()} matching trajectories (ranked by keyword occurrences)`;
       runGraphLayout(document.getElementById('layout-select').value);
       updateTelemetryCounts();
     }
@@ -617,8 +832,9 @@
         badge.className = 'px-2 py-0.5 text-[11px] font-medium rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30';
         badge.innerText = `✕ XSD Invalid (${summary.validation_errors.length} errors)`;
       }
+      const trajInfo = summary.total_trajectories ? ` · ${summary.total_trajectories.toLocaleString()} root-to-code trajectories` : '';
       document.getElementById('workspace-subtitle').innerText =
-        `${summary.xml_filename} + ${summary.xsd_filename} · ${summary.total_graph_nodes.toLocaleString()} indexed graph nodes`;
+        `${summary.xml_filename} + ${summary.xsd_filename} · ${summary.total_graph_nodes.toLocaleString()} nodes${trajInfo}`;
     }
 
     function renderElementStats(tagCounts) {
@@ -669,8 +885,11 @@
       currentMode = mode;
       hiddenTypes.clear();
       searchMatchedIds = [];
+      currentSearchTrajectories = [];
+      totalMatchingTrajectories = 0;
       isTrajectoryIsolated = false;
       document.getElementById('btn-restore-search').classList.add('hidden');
+      document.getElementById('ranked-trajectories-section').classList.add('hidden');
       const docBtn = document.getElementById('tab-doc-graph');
       const schBtn = document.getElementById('tab-schema-graph');
       if (mode === 'document') {
@@ -701,12 +920,15 @@
 
     function clearDocumentGraph() {
       searchMatchedIds = [];
+      currentSearchTrajectories = [];
+      totalMatchingTrajectories = 0;
       isTrajectoryIsolated = false;
       selectedNodeId = null;
       document.getElementById('search-input').value = '';
       document.getElementById('btn-restore-search').classList.add('hidden');
+      document.getElementById('ranked-trajectories-section').classList.add('hidden');
       document.getElementById('telemetry-tip').innerText =
-        'Search for a term or ICD-10 code in the left panel to display its graph';
+        'Enter semicolon-separated keywords in the left panel to rank & display top N trajectories';
       cy.elements().remove();
       document.getElementById('empty-graph-state').classList.remove('hidden');
       updateTelemetryCounts();
@@ -758,6 +980,55 @@
       cy.elements(':visible').layout(opts).run();
     }
 
+    function getTopNParam() {
+      const raw = parseInt(document.getElementById('top-n-input').value, 10);
+      if (isNaN(raw) || raw < 1) return 10;
+      return Math.min(raw, 500);
+    }
+
+    async function onTopNChange() {
+      const q = document.getElementById('search-input').value.trim();
+      if (q && currentMode === 'document') {
+        await quickSearch(q);
+      }
+    }
+
+    function renderRankedTrajectoriesList(trajectories, totalMatches) {
+      const sec = document.getElementById('ranked-trajectories-section');
+      const badge = document.getElementById('ranked-trajectories-badge');
+      const list = document.getElementById('ranked-trajectories-list');
+
+      if (!trajectories || trajectories.length === 0) {
+        sec.classList.add('hidden');
+        list.innerHTML = '';
+        return;
+      }
+
+      sec.classList.remove('hidden');
+      badge.innerText = `${trajectories.length} / ${(totalMatches || trajectories.length).toLocaleString()} total`;
+
+      list.innerHTML = trajectories.map((t, idx) => {
+        const shortPath = (t.breadcrumb || '').replace(/^ICD-10-CM INDEX TO DISEASES and INJURIES\s*›\s*/i, '');
+        const kws = (t.matched_keywords || []).join('; ');
+        return `
+          <button type="button" onclick="isolateSingleTrajectory(${idx})"
+            class="w-full text-left bg-slate-950 hover:bg-slate-800/90 border border-slate-800 hover:border-indigo-500/40 rounded-lg p-2 space-y-1 transition">
+            <div class="flex items-center justify-between gap-1">
+              <div class="flex items-center gap-1.5">
+                <span class="px-1.5 py-0.5 text-[10px] mono font-bold rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">#${t.rank}</span>
+                <span class="px-1.5 py-0.5 text-[10px] mono font-semibold rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  ${t.keyword_occurrences} hit${t.keyword_occurrences === 1 ? '' : 's'}
+                </span>
+              </div>
+              <span class="px-1.5 py-0.5 text-[10px] mono font-semibold rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">${escapeHtml(t.code || '')}</span>
+            </div>
+            <div class="text-[11px] text-slate-200 leading-snug break-words">${escapeHtml(shortPath)}</div>
+            <div class="text-[10px] text-slate-400 mono truncate">Matched: ${escapeHtml(kws)}</div>
+          </button>
+        `;
+      }).join('');
+    }
+
     async function handleSearchSubmit(e) {
       e.preventDefault();
       const q = document.getElementById('search-input').value.trim();
@@ -770,13 +1041,17 @@
       if (currentMode !== 'document') {
         await switchMode('document');
       }
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&max_results=25`);
+      const topN = getTopNParam();
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&top_n=${topN}`);
       const payload = await res.json();
       searchMatchedIds = payload.matched_ids || (payload.nodes || []).filter(n => n.data.highlighted).map(n => n.data.id);
+      currentSearchTrajectories = payload.trajectories || [];
+      totalMatchingTrajectories = payload.total_matching_trajectories || currentSearchTrajectories.length;
       isTrajectoryIsolated = false;
       document.getElementById('btn-restore-search').classList.add('hidden');
       document.getElementById('telemetry-tip').innerText =
-        'Search active: Click any node to isolate its trajectory to the found term/code';
+        `Showing Top ${currentSearchTrajectories.length} of ${totalMatchingTrajectories.toLocaleString()} matching trajectories (ranked by keyword occurrences)`;
+      renderRankedTrajectoriesList(currentSearchTrajectories, totalMatchingTrajectories);
       renderGraphPayload(payload);
       const highlighted = cy.nodes('[?highlighted]');
       if (highlighted.length > 0) {
@@ -1049,6 +1324,238 @@
       a.href = png64;
       a.download = `xml_graph_${currentMode}_${Date.now()}.png`;
       a.click();
+    }
+
+    function getSelectedSaveScope() {
+      const el = document.querySelector('input[name="save-scope"]:checked');
+      return el ? el.value : 'canvas';
+    }
+
+    function setSelectedSaveScope(val) {
+      const el = document.querySelector(`input[name="save-scope"][value="${val}"]`);
+      if (el) el.checked = true;
+    }
+
+    function computeSuggestedFilename(scope, fmt) {
+      const extMap = { pg_json: '.pg.json', pg_jsonl: '.jsonl', gql_sql: '.sql' };
+      const ext = extMap[fmt] || '.pg.json';
+      const xmlBase = (activeWorkspaceSummary && activeWorkspaceSummary.xml_filename)
+        ? activeWorkspaceSummary.xml_filename.replace(/\.xml$/i, '')
+        : 'xml_graph';
+      const q = (document.getElementById('search-input').value || '').trim();
+      const safeQuery = q ? q.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') : '';
+
+      if (scope === 'schema') {
+        const xsdBase = (activeWorkspaceSummary && activeWorkspaceSummary.xsd_filename)
+          ? activeWorkspaceSummary.xsd_filename.replace(/\.xsd$/i, '')
+          : 'xsd_schema';
+        return `${xsdBase}_schema_graph${ext}`;
+      }
+      if (scope === 'canvas' && safeQuery) {
+        return `${xmlBase}_${safeQuery}_graph${ext}`;
+      }
+      if (scope === 'canvas') {
+        return `${xmlBase}_subgraph${ext}`;
+      }
+      return `${xmlBase}_full_graph${ext}`;
+    }
+
+    function onSaveScopeOrFormatChange() {
+      const scope = getSelectedSaveScope();
+      const fmt = document.getElementById('save-format-select').value;
+      document.getElementById('save-filename-input').value = computeSuggestedFilename(scope, fmt);
+
+      const hintEl = document.getElementById('save-format-hint');
+      if (fmt === 'pg_json') {
+        hintEl.innerHTML = `<span class="text-emerald-400 font-medium">Why PG-JSON (.pg.json)?</span> Combines an LLM-readable clinical ontology &amp; trajectory summary, ready-to-run BigQuery Graph &amp; Spanner Graph <span class="mono text-slate-200">CREATE PROPERTY GRAPH</span> DDL, and flat primary/foreign-key <span class="mono text-slate-200">nodes</span> and <span class="mono text-slate-200">edges</span> records.`;
+      } else if (fmt === 'pg_jsonl') {
+        hintEl.innerHTML = `<span class="text-amber-400 font-medium">Why PG-JSONL (.jsonl)?</span> Newline-Delimited JSON records (<span class="mono text-slate-200">record_type: "node" | "edge"</span>) designed for direct <span class="mono text-slate-200">bq load --source_format=NEWLINE_DELIMITED_JSON</span>, Spanner bulk import, and streaming LLM ingestion.`;
+      } else {
+        hintEl.innerHTML = `<span class="text-sky-400 font-medium">Why GoogleSQL (.sql)?</span> Directly executable SQL script containing <span class="mono text-slate-200">CREATE TABLE</span>, batched <span class="mono text-slate-200">INSERT INTO</span> statements, and <span class="mono text-slate-200">CREATE OR REPLACE PROPERTY GRAPH</span> DDL for BigQuery Studio &amp; Spanner Studio.`;
+      }
+    }
+
+    async function openSaveGraphModal() {
+      const modal = document.getElementById('save-graph-modal');
+      const statusEl = document.getElementById('save-graph-status');
+      statusEl.classList.add('hidden');
+      statusEl.innerHTML = '';
+
+      const visNodes = cy ? cy.nodes(':visible').length : 0;
+      const visEdges = cy ? cy.edges(':visible').length : 0;
+      const totalNodes = (activeWorkspaceSummary && activeWorkspaceSummary.total_graph_nodes) || 0;
+
+      document.getElementById('save-scope-canvas-desc').innerText =
+        visNodes > 0 ? `${visNodes.toLocaleString()} nodes · ${visEdges.toLocaleString()} edges` : 'Canvas empty (uses full)';
+      document.getElementById('save-scope-full-desc').innerText =
+        `${totalNodes.toLocaleString()} indexed nodes`;
+
+      if (currentMode === 'schema') {
+        setSelectedSaveScope('schema');
+      } else if (visNodes > 0) {
+        setSelectedSaveScope('canvas');
+      } else {
+        setSelectedSaveScope('full');
+      }
+
+      onSaveScopeOrFormatChange();
+
+      const dirInput = document.getElementById('save-dir-input');
+      if (!dirInput.value) {
+        await loadDirectoryBrowser('');
+      }
+      modal.classList.remove('hidden');
+    }
+
+    function closeSaveGraphModal() {
+      document.getElementById('save-graph-modal').classList.add('hidden');
+    }
+
+    function toggleDirBrowser() {
+      const panel = document.getElementById('dir-browser-panel');
+      if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
+        loadDirectoryBrowser(document.getElementById('save-dir-input').value);
+      } else {
+        panel.classList.add('hidden');
+      }
+    }
+
+    async function loadDirectoryBrowser(path) {
+      const url = path ? `/api/fs/dirs?path=${encodeURIComponent(path)}` : '/api/fs/dirs';
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      document.getElementById('save-dir-input').value = data.current_path;
+      document.getElementById('dir-browser-current').innerText = data.current_path;
+      const upBtn = document.getElementById('dir-browser-up-btn');
+      upBtn.onclick = () => loadDirectoryBrowser(data.parent_path);
+
+      const listEl = document.getElementById('dir-browser-list');
+      if (!data.directories || data.directories.length === 0) {
+        listEl.innerHTML = `<div class="col-span-2 text-slate-500 py-1">No subdirectories inside this folder</div>`;
+      } else {
+        listEl.innerHTML = data.directories.map(d => `
+          <button type="button" onclick="loadDirectoryBrowser('${escapeHtml(d.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'"))}')"
+            class="text-left px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 text-indigo-300 truncate transition">
+            📁 ${escapeHtml(d.name)}
+          </button>
+        `).join('');
+      }
+    }
+
+    function buildSaveRequestPayload() {
+      const scope = getSelectedSaveScope();
+      const format = document.getElementById('save-format-select').value;
+      const directory = document.getElementById('save-dir-input').value.trim();
+      const filename = document.getElementById('save-filename-input').value.trim() || computeSuggestedFilename(scope, format);
+      const search_query = (document.getElementById('search-input').value || '').trim() || null;
+
+      let node_ids = null;
+      let edge_ids = null;
+      if (scope === 'canvas' && cy && cy.nodes(':visible').length > 0) {
+        node_ids = cy.nodes(':visible').map(n => n.id());
+        edge_ids = cy.edges(':visible').map(e => e.id());
+      }
+
+      return { scope, format, directory, filename, node_ids, edge_ids, search_query };
+    }
+
+    async function saveGraphToServerPath() {
+      const btn = document.getElementById('btn-save-graph-confirm');
+      const statusEl = document.getElementById('save-graph-status');
+      const payload = buildSaveRequestPayload();
+
+      btn.disabled = true;
+      btn.innerText = 'Building & Saving...';
+      statusEl.className = 'rounded-xl p-3 text-xs bg-slate-950 border border-slate-800 text-slate-300';
+      statusEl.innerHTML = 'Constructing Property Graph object and writing to disk...';
+      statusEl.classList.remove('hidden');
+
+      try {
+        const res = await fetch('/api/save-graph', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || 'Failed to save graph');
+        }
+        const sizeKb = (data.size_bytes / 1024).toFixed(1);
+        statusEl.className = 'rounded-xl p-3 text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 space-y-1';
+        statusEl.innerHTML = `
+          <div class="font-semibold text-emerald-300">✓ Graph Object Created &amp; Saved Successfully</div>
+          <div class="mono text-[11px] text-slate-200 break-all">Path: ${escapeHtml(data.saved_path)}</div>
+          <div class="text-[11px] text-slate-300">
+            Nodes: <span class="mono font-semibold">${data.metadata.node_count.toLocaleString()}</span> ·
+            Edges: <span class="mono font-semibold">${data.metadata.edge_count.toLocaleString()}</span> ·
+            Size: <span class="mono font-semibold">${sizeKb} KB</span>
+          </div>
+        `;
+      } catch (err) {
+        statusEl.className = 'rounded-xl p-3 text-xs bg-rose-500/10 border border-rose-500/30 text-rose-300';
+        statusEl.innerText = `Error: ${err.message}`;
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Save Graph File';
+      }
+    }
+
+    async function saveGraphViaOSPicker() {
+      const statusEl = document.getElementById('save-graph-status');
+      const payload = buildSaveRequestPayload();
+
+      try {
+        let fileHandle = null;
+        if (window.showSaveFilePicker) {
+          const extMap = {
+            pg_json: { description: 'Property Graph JSON', accept: { 'application/json': ['.pg.json', '.json'] } },
+            pg_jsonl: { description: 'Property Graph JSONL', accept: { 'application/x-ndjson': ['.jsonl'] } },
+            gql_sql: { description: 'GoogleSQL Property Graph Script', accept: { 'application/sql': ['.sql'] } }
+          };
+          fileHandle = await window.showSaveFilePicker({
+            suggestedName: payload.filename,
+            types: [extMap[payload.format] || extMap.pg_json]
+          });
+        }
+
+        statusEl.className = 'rounded-xl p-3 text-xs bg-slate-950 border border-slate-800 text-slate-300';
+        statusEl.innerHTML = 'Constructing Property Graph object...';
+        statusEl.classList.remove('hidden');
+
+        const res = await fetch('/api/export-graph', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          throw new Error('Failed to export graph from server');
+        }
+        const blob = await res.blob();
+
+        if (fileHandle) {
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          statusEl.className = 'rounded-xl p-3 text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-200';
+          statusEl.innerHTML = `<div class="font-semibold text-emerald-300">✓ Saved "${escapeHtml(fileHandle.name)}" (${(blob.size / 1024).toFixed(1)} KB) via OS File Dialog</div>`;
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = payload.filename;
+          a.click();
+          URL.revokeObjectURL(url);
+          statusEl.className = 'rounded-xl p-3 text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-200';
+          statusEl.innerHTML = `<div class="font-semibold text-emerald-300">✓ Downloaded "${escapeHtml(payload.filename)}" (${(blob.size / 1024).toFixed(1)} KB)</div>`;
+        }
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+        statusEl.className = 'rounded-xl p-3 text-xs bg-rose-500/10 border border-rose-500/30 text-rose-300';
+        statusEl.innerText = `Error: ${err.message}`;
+        statusEl.classList.remove('hidden');
+      }
     }
 
     function escapeHtml(str) {
