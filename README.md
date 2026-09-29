@@ -18,7 +18,15 @@ An interactive web application that loads an **XML Document** (`xml_documents/ic
    - Powered by **Cytoscape.js** + **Dagre** hierarchical layout, **CoSE** force-directed layout, **Concentric**, and **Breadthfirst** layouts.
    - **Click** any node to inspect its XML properties, source line number, governing XSD Schema rules, and connected nodes.
    - **Double-click** (or click **+ Expand Connected**) on any node (including shared ICD-10 `code` nodes) to dynamically fetch and merge its connected subgraph onto the canvas.
-   - Search by **Term Title** (e.g., `Aberrant`, `Abdomen`) or **ICD-10 Code** (e.g., `Q27.8`), browse by **Index Letter (`A`–`Z`)**, or upload custom `.xml` and `.xsd` files.
+   - Search by **Term Title** (e.g., `Aberrant`, `Abdomen`) or **ICD-10 Code** (e.g., `Q27.8`), isolate search trajectories on click, or upload custom `.xml` and `.xsd` files.
+
+4. **Save As Property Graph (`PG-JSON`, `PG-JSONL`, & `GoogleSQL DDL`)**:
+   - Click **Save As Graph** in the top header or bottom action bar to build a formal **ISO/IEC 39075 GQL Labeled Property Graph** (`networkx.MultiDiGraph`) from the currently displayed canvas subgraph, the full XML document, or the XSD schema meta-graph.
+   - Choose the target directory and file name (either via the interactive folder browser saving directly to disk or via the native OS file-save dialog).
+   - Supports three graph representations optimized for **LLM comprehension**, **Google Cloud BigQuery Graph**, and **Cloud Spanner Graph**:
+     - **Property Graph JSON (`.pg.json` — Default)**: Self-contained document combining an `llm_context` clinical trajectory summary, ready-to-run BigQuery Graph & Spanner Graph `CREATE PROPERTY GRAPH` DDL, and flat primary/foreign-key `nodes` & `edges` collections.
+     - **Property Graph JSONL (`.jsonl`)**: Newline-Delimited JSON records (`record_type: "node" | "edge"`) ready for direct `bq load --source_format=NEWLINE_DELIMITED_JSON` and Spanner bulk import.
+     - **GoogleSQL Property Graph Script (`.sql`)**: Executable `CREATE TABLE`, batched `INSERT INTO`, and `CREATE OR REPLACE PROPERTY GRAPH` statements.
 
 ## Quick Start
 
@@ -27,3 +35,4 @@ An interactive web application that loads an **XML Document** (`xml_documents/ic
 ```
 
 Then open **http://127.0.0.1:8000** in your browser.
+
