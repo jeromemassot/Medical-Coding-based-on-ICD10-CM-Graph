@@ -12,11 +12,22 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
+    html.dark {
+      color-scheme: dark;
+    }
+    html.light {
+      color-scheme: light;
+    }
     body {
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
       background-color: #0b0f19;
       color: #e2e8f0;
       overflow: hidden;
+      transition: background-color 150ms ease, color 150ms ease;
+    }
+    html.light body {
+      background-color: #f8fafc;
+      color: #0f172a;
     }
     .mono {
       font-family: 'JetBrains Mono', monospace;
@@ -27,6 +38,13 @@
       background:
         radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.35) 0%, rgba(11, 15, 25, 0.95) 100%),
         radial-gradient(#1e293b 1px, transparent 1px);
+      background-size: 100% 100%, 24px 24px;
+      transition: background 150ms ease;
+    }
+    html.light #cy {
+      background:
+        radial-gradient(circle at 50% 50%, rgba(226, 232, 240, 0.45) 0%, rgba(248, 250, 252, 0.96) 100%),
+        radial-gradient(#cbd5e1 1px, transparent 1px);
       background-size: 100% 100%, 24px 24px;
     }
     ::-webkit-scrollbar {
@@ -42,6 +60,74 @@
     }
     ::-webkit-scrollbar-thumb:hover {
       background: #475569;
+    }
+    html.light ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    html.light ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    html.light ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* Light Mode Surface, Border & Typography Overrides */
+    html.light .bg-slate-950 { background-color: #f1f5f9 !important; }
+    html.light .bg-slate-950\/90 { background-color: rgba(241, 245, 249, 0.92) !important; }
+    html.light .bg-slate-950\/70 { background-color: rgba(241, 245, 249, 0.78) !important; }
+    html.light #upload-modal.bg-slate-950\/80,
+    html.light #save-graph-modal.bg-slate-950\/80 {
+      background-color: rgba(15, 23, 42, 0.45) !important;
+    }
+    html.light .bg-slate-900 { background-color: #ffffff !important; }
+    html.light .bg-slate-900\/95 { background-color: rgba(255, 255, 255, 0.96) !important; }
+    html.light .bg-slate-900\/90 { background-color: rgba(255, 255, 255, 0.92) !important; }
+    html.light .bg-slate-900\/85 { background-color: rgba(255, 255, 255, 0.90) !important; }
+    html.light .bg-slate-900\/80 { background-color: rgba(255, 255, 255, 0.88) !important; }
+    html.light .bg-slate-900\/75 { background-color: rgba(255, 255, 255, 0.85) !important; }
+    html.light .bg-slate-800 { background-color: #e2e8f0 !important; }
+    html.light .bg-slate-700 { background-color: #cbd5e1 !important; }
+    html.light .hover\:bg-slate-800:hover,
+    html.light .hover\:bg-slate-800\/90:hover,
+    html.light .hover\:bg-slate-800\/60:hover { background-color: #e2e8f0 !important; }
+    html.light .hover\:bg-slate-700:hover { background-color: #cbd5e1 !important; }
+
+    html.light .border-slate-800,
+    html.light .border-slate-800\/90,
+    html.light .border-slate-800\/80 { border-color: #e2e8f0 !important; }
+    html.light .border-slate-700 { border-color: #cbd5e1 !important; }
+    html.light .divide-slate-800\/70 > :not([hidden]) ~ :not([hidden]) { border-color: #e2e8f0 !important; }
+
+    html.light .text-slate-100 { color: #0f172a !important; }
+    html.light .text-slate-200 { color: #1e293b !important; }
+    html.light .text-slate-300 { color: #334155 !important; }
+    html.light .text-slate-400 { color: #475569 !important; }
+    html.light .text-slate-500 { color: #64748b !important; }
+    html.light .hover\:text-slate-200:hover { color: #0f172a !important; }
+    html.light .placeholder-slate-500::placeholder { color: #94a3b8 !important; }
+
+    /* High-contrast semantic accents in Light mode */
+    html.light .text-indigo-300 { color: #4338ca !important; }
+    html.light .text-indigo-400 { color: #4f46e5 !important; }
+    html.light .text-emerald-200,
+    html.light .text-emerald-300 { color: #047857 !important; }
+    html.light .text-emerald-400 { color: #059669 !important; }
+    html.light .text-amber-300 { color: #b45309 !important; }
+    html.light .text-amber-400 { color: #d97706 !important; }
+    html.light .text-pink-300 { color: #be185d !important; }
+    html.light .text-pink-400 { color: #db2777 !important; }
+    html.light .text-sky-400 { color: #0284c7 !important; }
+    html.light .text-rose-300 { color: #be123c !important; }
+    html.light .text-rose-400 { color: #e11d48 !important; }
+
+    html.dark select option {
+      background-color: #0f172a;
+      color: #e2e8f0;
+    }
+    html.light select option {
+      background-color: #ffffff;
+      color: #0f172a;
     }
   </style>
 </head>
@@ -104,6 +190,16 @@
           class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg border border-emerald-500/50 font-semibold shadow transition flex items-center gap-1.5">
           <span>Save As Graph</span>
         </button>
+
+        <div class="h-5 w-px bg-slate-800"></div>
+
+        <!-- Dark / Light Mode Switcher -->
+        <button id="theme-toggle-btn" type="button" onclick="toggleTheme()"
+          title="Switch between Dark and Light mode"
+          class="px-2.5 py-1 bg-slate-950 hover:bg-slate-800 text-slate-200 rounded-lg border border-slate-800 font-medium transition flex items-center gap-1.5">
+          <span id="theme-toggle-icon" class="text-sm leading-none">☀️</span>
+          <span id="theme-toggle-label">Light</span>
+        </button>
       </div>
     </div>
   </header>
@@ -160,7 +256,7 @@
           </span>
           <span id="ranked-trajectories-badge" class="text-[10px] mono text-slate-400"></span>
         </div>
-        <div id="ranked-trajectories-list" class="space-y-1.5 max-h-56 overflow-y-auto pr-1 text-xs"></div>
+        <div id="ranked-trajectories-list" class="space-y-1.5 max-h-[34rem] overflow-y-auto pr-1 text-xs"></div>
       </div>
 
       <!-- Layout Controls -->
@@ -179,21 +275,13 @@
       </div>
 
       <!-- Interactive Legend -->
-      <div class="p-3.5 space-y-2.5 flex-1">
+      <div class="p-3.5 space-y-2.5">
         <div class="flex items-center justify-between">
           <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Graph Node &amp; Edge Legend</span>
           <span class="text-[10px] text-slate-500">Click to filter</span>
         </div>
         <div id="legend-items" class="space-y-1.5 text-xs">
           <!-- Populated dynamically based on mode -->
-        </div>
-
-        <!-- Document Element Statistics -->
-        <div class="mt-4 pt-3 border-t border-slate-800/80">
-          <span class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-            XML Document Element Counts
-          </span>
-          <div id="element-stats-list" class="grid grid-cols-2 gap-1.5 text-[11px] mono"></div>
         </div>
       </div>
     </aside>
@@ -451,6 +539,7 @@
   <script>
     let cy = null;
     let currentMode = 'document'; // 'document' | 'schema'
+    let currentTheme = localStorage.getItem('xml_graph_theme') === 'light' ? 'light' : 'dark';
     let selectedNodeId = null;
     let activeWorkspaceSummary = null;
     let hiddenTypes = new Set();
@@ -476,6 +565,114 @@
       'xsd_attribute':       { bg: '#ec4899', border: '#f472b6', label: 'XSD Attribute (@attr)', shape: 'round-tag', size: 26 }
     };
 
+    function getCytoscapeStyle(theme) {
+      const isLight = theme === 'light';
+      return [
+        {
+          selector: 'node',
+          style: {
+            'label': 'data(label)',
+            'color': isLight ? '#0f172a' : '#f8fafc',
+            'font-family': 'Inter, sans-serif',
+            'font-size': '11px',
+            'font-weight': '500',
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'text-margin-y': 6,
+            'text-wrap': 'wrap',
+            'text-max-width': '150px',
+            'text-outline-width': isLight ? 2.5 : 2,
+            'text-outline-color': isLight ? '#ffffff' : '#0b0f19',
+            'background-color': ele => (NODE_COLORS[ele.data('node_type')] || NODE_COLORS.entity).bg,
+            'border-width': ele => ele.data('highlighted') ? 3.5 : 2,
+            'border-color': ele => ele.data('highlighted')
+              ? (isLight ? '#d97706' : '#fde047')
+              : (NODE_COLORS[ele.data('node_type')] || NODE_COLORS.entity).border,
+            'shape': ele => (NODE_COLORS[ele.data('node_type')] || NODE_COLORS.entity).shape,
+            'width': ele => (NODE_COLORS[ele.data('node_type')] || NODE_COLORS.entity).size,
+            'height': ele => (NODE_COLORS[ele.data('node_type')] || NODE_COLORS.entity).size,
+            'transition-property': 'background-color, border-color, border-width, width, height',
+            'transition-duration': '150ms'
+          }
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-width': 4,
+            'border-color': isLight ? '#312e81' : '#ffffff',
+            'overlay-color': '#6366f1',
+            'overlay-padding': 6,
+            'overlay-opacity': 0.25
+          }
+        },
+        {
+          selector: 'edge',
+          style: {
+            'width': ele => ele.data('edge_type') === 'HIERARCHY' ? 1.6 : 2,
+            'curve-style': 'bezier',
+            'target-arrow-shape': 'triangle',
+            'arrow-scale': 0.85,
+            'line-color': ele => {
+              const t = ele.data('edge_type');
+              if (t === 'CODES_TO') return '#f59e0b';
+              if (t === 'SEE' || t === 'SEE_ALSO') return '#ec4899';
+              if (t === 'USES_GROUP' || t === 'GROUP_CONTAINS') return '#f59e0b';
+              if (t === 'HAS_ATTRIBUTE') return '#ec4899';
+              return isLight ? '#64748b' : '#475569';
+            },
+            'target-arrow-color': ele => {
+              const t = ele.data('edge_type');
+              if (t === 'CODES_TO') return '#f59e0b';
+              if (t === 'SEE' || t === 'SEE_ALSO') return '#ec4899';
+              if (t === 'USES_GROUP' || t === 'GROUP_CONTAINS') return '#f59e0b';
+              if (t === 'HAS_ATTRIBUTE') return '#ec4899';
+              return isLight ? '#64748b' : '#475569';
+            },
+            'line-style': ele => {
+              const t = ele.data('edge_type');
+              return (t === 'SEE' || t === 'SEE_ALSO' || t === 'USES_GROUP') ? 'dashed' : 'solid';
+            },
+            'label': 'data(label)',
+            'font-size': '8.5px',
+            'font-family': 'JetBrains Mono, monospace',
+            'color': isLight ? '#334155' : '#94a3b8',
+            'text-background-color': isLight ? '#f8fafc' : '#0b0f19',
+            'text-background-opacity': 0.85,
+            'text-background-padding': '2px',
+            'text-rotation': 'autorotate'
+          }
+        }
+      ];
+    }
+
+    function applyTheme(theme) {
+      currentTheme = theme === 'light' ? 'light' : 'dark';
+      const root = document.documentElement;
+      root.classList.remove('dark', 'light');
+      root.classList.add(currentTheme);
+      localStorage.setItem('xml_graph_theme', currentTheme);
+
+      const iconEl = document.getElementById('theme-toggle-icon');
+      const labelEl = document.getElementById('theme-toggle-label');
+      if (iconEl && labelEl) {
+        if (currentTheme === 'dark') {
+          iconEl.innerText = '☀️';
+          labelEl.innerText = 'Light';
+        } else {
+          iconEl.innerText = '🌙';
+          labelEl.innerText = 'Dark';
+        }
+      }
+
+      if (cy) {
+        cy.style(getCytoscapeStyle(currentTheme)).update();
+      }
+    }
+
+    function toggleTheme() {
+      applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+    }
+
     function initCytoscape() {
       cy = cytoscape({
         container: document.getElementById('cy'),
@@ -483,80 +680,7 @@
         minZoom: 0.12,
         maxZoom: 3.5,
         wheelSensitivity: 0.25,
-        style: [
-          {
-            selector: 'node',
-            style: {
-              'label': 'data(label)',
-              'color': '#f8fafc',
-              'font-family': 'Inter, sans-serif',
-              'font-size': '11px',
-              'font-weight': '500',
-              'text-valign': 'bottom',
-              'text-halign': 'center',
-              'text-margin-y': 6,
-              'text-wrap': 'wrap',
-              'text-max-width': '150px',
-              'text-outline-width': 2,
-              'text-outline-color': '#0b0f19',
-              'background-color': ele => (NODE_COLORS[ele.data('node_type')] || NODE_COLORS.entity).bg,
-              'border-width': ele => ele.data('highlighted') ? 3.5 : 2,
-              'border-color': ele => ele.data('highlighted') ? '#fde047' : (NODE_COLORS[ele.data('node_type')] || NODE_COLORS.entity).border,
-              'shape': ele => (NODE_COLORS[ele.data('node_type')] || NODE_COLORS.entity).shape,
-              'width': ele => (NODE_COLORS[ele.data('node_type')] || NODE_COLORS.entity).size,
-              'height': ele => (NODE_COLORS[ele.data('node_type')] || NODE_COLORS.entity).size,
-              'transition-property': 'background-color, border-color, border-width, width, height',
-              'transition-duration': '150ms'
-            }
-          },
-          {
-            selector: 'node:selected',
-            style: {
-              'border-width': 4,
-              'border-color': '#ffffff',
-              'overlay-color': '#6366f1',
-              'overlay-padding': 6,
-              'overlay-opacity': 0.25
-            }
-          },
-          {
-            selector: 'edge',
-            style: {
-              'width': ele => ele.data('edge_type') === 'HIERARCHY' ? 1.6 : 2,
-              'curve-style': 'bezier',
-              'target-arrow-shape': 'triangle',
-              'arrow-scale': 0.85,
-              'line-color': ele => {
-                const t = ele.data('edge_type');
-                if (t === 'CODES_TO') return '#f59e0b';
-                if (t === 'SEE' || t === 'SEE_ALSO') return '#ec4899';
-                if (t === 'USES_GROUP' || t === 'GROUP_CONTAINS') return '#f59e0b';
-                if (t === 'HAS_ATTRIBUTE') return '#ec4899';
-                return '#475569';
-              },
-              'target-arrow-color': ele => {
-                const t = ele.data('edge_type');
-                if (t === 'CODES_TO') return '#f59e0b';
-                if (t === 'SEE' || t === 'SEE_ALSO') return '#ec4899';
-                if (t === 'USES_GROUP' || t === 'GROUP_CONTAINS') return '#f59e0b';
-                if (t === 'HAS_ATTRIBUTE') return '#ec4899';
-                return '#475569';
-              },
-              'line-style': ele => {
-                const t = ele.data('edge_type');
-                return (t === 'SEE' || t === 'SEE_ALSO' || t === 'USES_GROUP') ? 'dashed' : 'solid';
-              },
-              'label': 'data(label)',
-              'font-size': '8.5px',
-              'font-family': 'JetBrains Mono, monospace',
-              'color': '#94a3b8',
-              'text-background-color': '#0b0f19',
-              'text-background-opacity': 0.85,
-              'text-background-padding': '2px',
-              'text-rotation': 'autorotate'
-            }
-          }
-        ]
+        style: getCytoscapeStyle(currentTheme)
       });
 
       // Single tap on a node: inspect node and, if a search result is active, isolate trajectory to found node(s)
@@ -801,12 +925,12 @@
     }
 
     async function bootstrap() {
+      applyTheme(currentTheme);
       initCytoscape();
       const res = await fetch('/api/files');
       const data = await res.json();
       populateFileSelectors(data);
       updateWorkspaceHeader(data.active);
-      renderElementStats(data.active.tag_counts || {});
       renderLegend();
       clearDocumentGraph();
     }
@@ -837,16 +961,6 @@
         `${summary.xml_filename} + ${summary.xsd_filename} · ${summary.total_graph_nodes.toLocaleString()} nodes${trajInfo}`;
     }
 
-    function renderElementStats(tagCounts) {
-      const container = document.getElementById('element-stats-list');
-      container.innerHTML = Object.entries(tagCounts).map(([tag, count]) => `
-        <div class="bg-slate-950/90 border border-slate-800/80 rounded px-2 py-1 flex items-center justify-between">
-          <span class="text-slate-400">&lt;${tag}&gt;</span>
-          <span class="text-slate-200 font-semibold">${count.toLocaleString()}</span>
-        </div>
-      `).join('');
-    }
-
     function renderLegend() {
       const container = document.getElementById('legend-items');
       const keys = currentMode === 'document'
@@ -861,7 +975,7 @@
             class="w-full flex items-center justify-between px-2 py-1 rounded hover:bg-slate-800/60 transition ${isHidden ? 'opacity-40 line-through' : ''}">
             <div class="flex items-center gap-2">
               <span class="w-3 h-3 rounded-sm inline-block border" style="background:${cfg.bg}; border-color:${cfg.border}"></span>
-              <span class="text-slate-300">${cfg.label}</span>
+              <span class="text-slate-300">${escapeHtml(cfg.label)}</span>
             </div>
             <span class="text-[10px] text-slate-500 mono">${isHidden ? 'hidden' : 'visible'}</span>
           </button>
@@ -1102,12 +1216,7 @@
       if (detail.error) return;
 
       const node = detail.node;
-      const xsd = detail.xsd_definition || {};
       document.getElementById('inspector-tag-badge').innerText = `<${node.tag}>`;
-
-      const propsEntries = Object.entries(node.properties || {});
-      const attrEntries = Object.entries(node.attributes || {});
-      const resolvedChildren = xsd.resolved_children || [];
 
       let html = `
         <!-- Node Title & Breadcrumb -->
@@ -1118,7 +1227,7 @@
             </span>
             ${node.line ? `<span class="text-[10px] mono text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">XML Line ${node.line}</span>` : ''}
           </div>
-          <h3 class="text-sm font-semibold text-white">${escapeHtml(node.label || node.id)}</h3>
+          <h3 class="text-sm font-semibold text-slate-100">${escapeHtml(node.label || node.id)}</h3>
           ${node.nemod ? `<p class="text-xs text-amber-300 mono">Modifier (&lt;nemod&gt;): ${escapeHtml(node.nemod)}</p>` : ''}
           ${node.breadcrumb ? `<p class="text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">${escapeHtml(node.breadcrumb)}</p>` : ''}
         </div>
@@ -1136,75 +1245,6 @@
               class="py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs transition">
               Center
             </button>
-          </div>
-        `;
-      }
-
-      // Attributes & Properties
-      html += `
-        <div class="space-y-2">
-          <h4 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            XML Properties &amp; Attributes
-          </h4>
-          <div class="bg-slate-950 border border-slate-800 rounded-xl divide-y divide-slate-800/70">
-            ${attrEntries.map(([k, v]) => `
-              <div class="px-3 py-1.5 flex justify-between gap-2">
-                <span class="mono text-pink-400">@${escapeHtml(k)}</span>
-                <span class="mono text-slate-200">${escapeHtml(String(v))}</span>
-              </div>
-            `).join('')}
-            ${propsEntries.map(([k, v]) => `
-              <div class="px-3 py-1.5 flex justify-between gap-2">
-                <span class="mono text-sky-400">&lt;${escapeHtml(k)}&gt;</span>
-                <span class="mono text-slate-100 text-right">${escapeHtml(Array.isArray(v) ? v.join(', ') : String(v))}</span>
-              </div>
-            `).join('')}
-            ${attrEntries.length === 0 && propsEntries.length === 0 ? `
-              <div class="px-3 py-2 text-slate-500">No scalar properties</div>
-            ` : ''}
-          </div>
-        </div>
-      `;
-
-      // Governing XSD Schema Definition
-      if (xsd && xsd.name) {
-        html += `
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <h4 class="text-[11px] font-semibold uppercase tracking-wider text-emerald-400">
-                XSD Schema Definition (&lt;xsd:element name="${xsd.name}"&gt;)
-              </h4>
-            </div>
-            <div class="bg-slate-950 border border-emerald-500/25 rounded-xl p-3 space-y-2">
-              <div class="flex justify-between text-[11px]">
-                <span class="text-slate-400">Schema Category:</span>
-                <span class="mono text-emerald-300">${xsd.category} (mixed=${xsd.is_mixed})</span>
-              </div>
-              ${xsd.attributes && xsd.attributes.length > 0 ? `
-                <div class="pt-1 border-t border-slate-800">
-                  <span class="text-[10px] uppercase text-slate-400 font-semibold block mb-1">XSD Attributes:</span>
-                  ${xsd.attributes.map(a => `
-                    <div class="text-[11px] mono text-pink-300">
-                      @${a.name} (${a.use}, ${a.base_type})
-                      ${a.restrictions && a.restrictions.minInclusive ? `[${a.restrictions.minInclusive}..${a.restrictions.maxInclusive}]` : ''}
-                    </div>
-                  `).join('')}
-                </div>
-              ` : ''}
-              ${resolvedChildren.length > 0 ? `
-                <div class="pt-1 border-t border-slate-800">
-                  <span class="text-[10px] uppercase text-slate-400 font-semibold block mb-1">Allowed Child Elements (XSD):</span>
-                  <div class="space-y-1 max-h-36 overflow-y-auto pr-1">
-                    ${resolvedChildren.map(c => `
-                      <div class="flex items-center justify-between text-[11px] mono bg-slate-900/90 px-2 py-0.5 rounded">
-                        <span class="text-indigo-300">&lt;${c.target}&gt;</span>
-                        <span class="text-slate-400">${c.minOccurs}..${c.maxOccurs === 'unbounded' ? '*' : c.maxOccurs} ${c.via_group ? `(via ${c.via_group})` : ''}</span>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-            </div>
           </div>
         `;
       }
@@ -1284,7 +1324,6 @@
       });
       const data = await res.json();
       updateWorkspaceHeader(data.active);
-      renderElementStats(data.active.tag_counts || {});
       if (currentMode === 'schema') {
         await switchMode('schema');
       } else {
@@ -1314,12 +1353,12 @@
       const filesData = await filesRes.json();
       populateFileSelectors(filesData);
       updateWorkspaceHeader(data.active);
-      renderElementStats(data.active.tag_counts || {});
       clearDocumentGraph();
     }
 
     function exportGraphPNG() {
-      const png64 = cy.png({ full: true, scale: 2, bg: '#0b0f19' });
+      const bg = currentTheme === 'light' ? '#f8fafc' : '#0b0f19';
+      const png64 = cy.png({ full: true, scale: 2, bg });
       const a = document.createElement('a');
       a.href = png64;
       a.download = `xml_graph_${currentMode}_${Date.now()}.png`;
