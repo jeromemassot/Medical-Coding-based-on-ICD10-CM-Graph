@@ -570,14 +570,13 @@ class XMLGraphWorkspace:
                 self.nodes[code_node_id]["child_count"] = len(term_ids)
                 self.nodes[code_node_id]["properties"]["linked_terms_count"] = len(term_ids)
 
-        # Precompute searchable text for every node (excluding root n_0)
+        # Precompute searchable text for every node (excluding root n_0 and parenthetical <nemod> modifiers)
         for nid, ndata in self.nodes.items():
             if nid == self.root_id:
                 continue
-            title_val = (ndata.get("title") or "").strip()
-            nemod_val = (ndata.get("nemod") or "").strip()
-            self.node_title_lower[nid] = title_val.lower()
-            self.node_search_text[nid] = f"{title_val} {nemod_val}".strip().lower()
+            title_val = (ndata.get("title") or "").strip().lower()
+            self.node_title_lower[nid] = title_val
+            self.node_search_text[nid] = title_val
 
         # Precompute all root-to-code-leaf trajectories in document order
         for nid, ndata in self.nodes.items():
@@ -794,9 +793,8 @@ class XMLGraphWorkspace:
                 use_word_boundary.append(has_wb)
 
         node_match_details: Dict[str, Dict[str, Any]] = {}
-        traj_title_occurrences: Counter = Counter()
-        traj_title_kw_mask: Dict[int, int] = defaultdict(int)
-        traj_nemod_kw_mask: Dict[int, int] = defaultdict(int)
+        traj_occurrences: Counter = Counter()
+        traj_kw_mask: Dict[int, int] = defaultdict(int)
         traj_exact_hits: Counter = Counter()
 
         # Scan all indexed nodes and accumulate keyword occurrence counts onto root-to-code trajectories
@@ -807,30 +805,21 @@ class XMLGraphWorkspace:
             if not t_ids:
                 continue
             occ_count = 0
-            title_occ_count = 0
-            title_kw_mask = 0
-            nemod_kw_mask = 0
+            kw_mask = 0
             exact_count = 0
             matched_kws: List[str] = []
-            ntitle = self.node_title_lower.get(nid, "")
             for kw_idx, (kl, kdisp, pat) in enumerate(keywords):
                 if kl not in stext:
                     continue
                 if use_word_boundary[kw_idx] and pat is not None:
                     matched = bool(pat.search(stext))
-                    in_title = bool(pat.search(ntitle)) if ntitle else False
                 else:
                     matched = True
-                    in_title = kl in ntitle
                 if matched:
                     occ_count += 1
-                    if in_title:
-                        title_occ_count += 1
-                        title_kw_mask |= 1 << kw_idx
-                    else:
-                        nemod_kw_mask |= 1 << kw_idx
+                    kw_mask |= 1 << kw_idx
                     matched_kws.append(kdisp)
-                    if ntitle == kl or stext == kl:
+                    if stext == kl:
                         exact_count += 1
             if occ_count > 0:
                 node_match_details[nid] = {
@@ -838,15 +827,12 @@ class XMLGraphWorkspace:
                     "matched_keywords": matched_kws,
                 }
                 for tid in t_ids:
-                    if title_occ_count > 0:
-                        traj_title_occurrences[tid] += title_occ_count
-                        traj_title_kw_mask[tid] |= title_kw_mask
-                    if nemod_kw_mask:
-                        traj_nemod_kw_mask[tid] |= nemod_kw_mask
+                    traj_occurrences[tid] += occ_count
+                    traj_kw_mask[tid] |= kw_mask
                     if exact_count > 0:
                         traj_exact_hits[tid] += exact_count
 
-        all_matching_tids = set(traj_title_kw_mask.keys()) | set(traj_nemod_kw_mask.keys())
+        all_matching_tids = set(traj_kw_mask.keys())
         if not all_matching_tids:
             return {
                 "mode": "document",
@@ -862,28 +848,17 @@ class XMLGraphWorkspace:
                 "query": query,
             }
 
-        traj_occurrences: Dict[int, int] = {}
-        traj_kw_mask: Dict[int, int] = {}
-        for tid in all_matching_tids:
-            t_mask = traj_title_kw_mask.get(tid, 0)
-            n_mask = traj_nemod_kw_mask.get(tid, 0)
-            extra_nemod = n_mask & ~t_mask
-            traj_occurrences[tid] = traj_title_occurrences.get(tid, 0) + extra_nemod.bit_count()
-            traj_kw_mask[tid] = t_mask | n_mask
-
         # Rank trajectories by:
         # 1. Total keyword occurrences along the trajectory (descending)
         # 2. Number of distinct user keywords matched along the trajectory (descending)
-        # 3. Primary node title/code occurrences (descending, preferring title hits over parenthetical nemod hits)
-        # 4. Exact node title/code matches along the trajectory (descending)
-        # 5. Shorter trajectory path (ascending depth)
-        # 6. Document order tie-breaker
+        # 3. Exact node title/code matches along the trajectory (descending)
+        # 4. Shorter trajectory path (ascending depth)
+        # 5. Document order tie-breaker
         ranked_tids = sorted(
             all_matching_tids,
             key=lambda tid: (
                 traj_occurrences[tid],
                 traj_kw_mask[tid].bit_count(),
-                traj_title_occurrences.get(tid, 0),
                 traj_exact_hits.get(tid, 0),
                 -len(self.trajectories[tid]["nodes"]),
                 -tid,
