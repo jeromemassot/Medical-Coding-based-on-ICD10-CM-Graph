@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+import google.auth
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
+from google import genai
+from google.genai import types
 from pydantic import BaseModel
 
 from app.graph_engine import XMLGraphWorkspace
@@ -197,6 +201,91 @@ def expand_node(
 def get_node_detail(node_id: str):
     ws = get_active_workspace()
     return ws.get_node_detail(node_id=node_id)
+
+
+class ExtractConditionsRequest(BaseModel):
+    medical_note: str
+
+
+class ExtractedConditionItem(BaseModel):
+    condition: str
+    keywords: List[str]
+
+
+class ExtractedConditionsOutput(BaseModel):
+    conditions: List[ExtractedConditionItem]
+
+
+def _get_genai_client() -> genai.Client:
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if api_key:
+        return genai.Client(api_key=api_key)
+    project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if not project:
+        try:
+            _, default_project = google.auth.default()
+            project = default_project
+        except Exception:
+            project = None
+    project = project or "education-and-tests-422020"
+    location = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+    return genai.Client(vertexai=True, project=project, location=location)
+
+
+@app.post("/api/extract-conditions")
+def extract_conditions_from_note(req: ExtractConditionsRequest) -> Dict[str, Any]:
+    note_text = (req.medical_note or "").strip()
+    if not note_text:
+        raise HTTPException(status_code=400, detail="Medical note text cannot be empty.")
+
+    prompt = (
+        "You are a clinical coding expert specializing in the ICD-10-CM Index to Diseases and Injuries.\n"
+        "Analyze the following medical note and extract every medical condition, diagnosis, or clinical finding mentioned.\n"
+        "For each extracted condition, provide:\n"
+        "1. `condition`: The clear clinical name/description of the condition mentioned in the note.\n"
+        "2. `keywords`: An ordered list of atomic ICD-10-CM index search keywords associated with this condition "
+        "(e.g., main condition term, anatomical site, acuity/chronicity, congenital/acquired modifier, etiology, or subtype) "
+        "suitable for searching the ICD-10-CM index graph.\n\n"
+        f"Medical Note:\n{note_text}"
+    )
+
+    try:
+        client = _get_genai_client()
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=ExtractedConditionsOutput,
+                temperature=0.1,
+            ),
+        )
+        parsed: Optional[ExtractedConditionsOutput] = getattr(response, "parsed", None)
+        if parsed is None and response.text:
+            parsed = ExtractedConditionsOutput.model_validate_json(response.text)
+        raw_conditions = parsed.conditions if parsed else []
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Gemini (gemini-2.5-flash) extraction failed: {exc}",
+        ) from exc
+
+    conditions_payload = []
+    for item in raw_conditions:
+        cleaned_kws = [k.strip() for k in item.keywords if k and k.strip()]
+        conditions_payload.append(
+            {
+                "condition": item.condition.strip(),
+                "keywords": cleaned_kws,
+                "keywords_query": "; ".join(cleaned_kws),
+            }
+        )
+
+    return {
+        "model": "gemini-2.5-flash",
+        "conditions": conditions_payload,
+    }
+
 
 
 class SaveGraphRequest(BaseModel):

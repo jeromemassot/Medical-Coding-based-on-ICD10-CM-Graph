@@ -207,8 +207,49 @@
   <!-- MAIN WORKSPACE -->
   <div class="flex-1 flex overflow-hidden relative">
 
-    <!-- LEFT SIDEBAR: SEARCH, INDEX LETTERS, FILTERS, LEGEND -->
-    <aside class="w-80 border-r border-slate-800 bg-slate-900/75 flex flex-col shrink-0 z-10 overflow-y-auto">
+    <!-- LEFT SIDEBAR: MEDICAL NOTE EXTRACTOR, SEARCH, FILTERS, LEGEND -->
+    <aside class="w-[25rem] border-r border-slate-800 bg-slate-900/75 flex flex-col shrink-0 z-10 overflow-y-auto">
+
+      <!-- Medical Note Condition & Keyword Extractor (Gemini 2.5 Flash) -->
+      <div class="p-3.5 border-b border-slate-800 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <label for="medical-note-input" class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Medical Note Extractor
+          </label>
+          <span class="px-1.5 py-0.5 text-[10px] font-medium rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 mono">
+            gemini-2.5-flash
+          </span>
+        </div>
+        <form onsubmit="handleExtractConditionsSubmit(event)" class="space-y-2">
+          <textarea id="medical-note-input" rows="4" placeholder="Enter or paste a medical note to extract clinical conditions and associated keywords..."
+            class="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-lg px-2.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none resize-y"></textarea>
+          <div class="flex items-center gap-1.5">
+            <button id="btn-extract-conditions" type="submit"
+              class="flex-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition">
+              Extract Conditions &amp; Keywords
+            </button>
+            <button type="button" onclick="clearMedicalNoteExtractor()"
+              class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition">
+              Clear
+            </button>
+          </div>
+        </form>
+
+        <!-- Output Area for Extracted Conditions & Keywords -->
+        <div id="medical-note-output-section" class="space-y-1.5 pt-1">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Extracted Conditions &amp; Keywords
+            </span>
+            <span id="medical-note-output-badge" class="text-[10px] mono text-slate-500"></span>
+          </div>
+          <div id="medical-note-output" class="bg-slate-950/90 border border-slate-800 rounded-lg p-2.5 text-xs max-h-64 overflow-y-auto space-y-2">
+            <div class="text-[11px] text-slate-500 text-center py-2">
+              No conditions extracted yet. Enter a medical note above and click <span class="text-slate-300 font-medium">Extract Conditions &amp; Keywords</span>.
+            </div>
+          </div>
+        </div>
+      </div>
       
       <!-- Search Section -->
       <div class="p-3.5 border-b border-slate-800 space-y-2.5">
@@ -220,7 +261,7 @@
         </div>
         <form onsubmit="handleSearchSubmit(event)" class="space-y-2">
           <div class="flex gap-1.5">
-            <input id="search-input" type="text" placeholder="e.g. Abdomen; acute or Aberrant; artery"
+            <input id="search-input" type="text" placeholder="Enter semicolon-separated keywords..."
               class="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none" />
             <button type="submit"
               class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium shrink-0 transition">
@@ -238,14 +279,6 @@
             </div>
           </div>
         </form>
-        <!-- Quick query chips -->
-        <div class="flex flex-wrap gap-1 pt-0.5">
-          <span class="text-[10px] text-slate-500 mr-1 self-center">Try:</span>
-          <button onclick="quickSearch('Abdomen; acute')" class="px-2 py-0.5 text-[11px] rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/25">Abdomen; acute</button>
-          <button onclick="quickSearch('Aberrant; artery; Q27.8')" class="px-2 py-0.5 text-[11px] rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25">Aberrant; artery; Q27.8</button>
-          <button onclick="quickSearch('Diabetes; neuropathy')" class="px-2 py-0.5 text-[11px] rounded bg-slate-800 text-slate-300 hover:bg-slate-700">Diabetes; neuropathy</button>
-          <button onclick="quickSearch('Q27.8')" class="px-2 py-0.5 text-[11px] mono rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25">Q27.8</button>
-        </div>
       </div>
 
       <!-- Ranked Trajectories Results Panel (visible when a search is active) -->
@@ -319,29 +352,29 @@
           </div>
           <h3 class="text-sm font-semibold text-slate-200">No Graph Displayed</h3>
           <p class="text-xs text-slate-400">
-            Enter semicolon-separated keywords (e.g. <span class="mono text-indigo-300">Abdomen; acute</span> or <span class="mono text-emerald-300">Aberrant; artery; Q27.8</span>) and set <span class="mono text-slate-200">Top N</span> on the left to extract and rank root-to-code trajectories.
+            Enter semicolon-separated keywords and set <span class="mono text-slate-200">Top N</span> on the left to extract and rank root-to-code trajectories.
           </p>
         </div>
       </div>
 
       <!-- Floating Bottom-Center Action Bar -->
-      <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-xl p-1.5 shadow-2xl">
-        <button onclick="cy.fit(cy.elements(':visible'), 40)" class="px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-200 transition flex items-center gap-1">
+      <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 w-max whitespace-nowrap flex items-center gap-2 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-xl px-2.5 py-1.5 shadow-2xl">
+        <button onclick="cy.fit(cy.elements(':visible'), 40)" class="px-3 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-200 transition whitespace-nowrap shrink-0 flex items-center gap-1">
           Fit Screen
         </button>
-        <button onclick="centerOnRoot()" class="px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-200 transition">
+        <button onclick="centerOnRoot()" class="px-3 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-200 transition whitespace-nowrap shrink-0">
           Center Root
         </button>
-        <button id="btn-expand-selected" onclick="expandSelectedNode()" class="px-2.5 py-1.5 bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-medium transition">
+        <button id="btn-expand-selected" onclick="expandSelectedNode()" class="px-3.5 py-1.5 bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-medium transition whitespace-nowrap shrink-0">
           + Expand Selected Node
         </button>
-        <button onclick="resetCurrentGraph()" class="px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-300 transition">
+        <button onclick="resetCurrentGraph()" class="px-3 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-300 transition whitespace-nowrap shrink-0">
           Clear / Reset
         </button>
-        <button onclick="openSaveGraphModal()" class="px-2.5 py-1.5 bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-semibold transition">
+        <button onclick="openSaveGraphModal()" class="px-3.5 py-1.5 bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-semibold transition whitespace-nowrap shrink-0">
           Save As Graph
         </button>
-        <button onclick="exportGraphPNG()" class="px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-400 transition">
+        <button onclick="exportGraphPNG()" class="px-3 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-400 transition whitespace-nowrap shrink-0">
           Export PNG
         </button>
       </div>
@@ -351,7 +384,7 @@
     </main>
 
     <!-- RIGHT SIDEBAR: NODE & XSD SCHEMA INSPECTOR -->
-    <aside class="w-96 border-l border-slate-800 bg-slate-900/80 flex flex-col shrink-0 z-10 overflow-y-auto">
+    <aside class="w-[30rem] border-l border-slate-800 bg-slate-900/80 flex flex-col shrink-0 z-10 overflow-y-auto">
       <div class="p-3.5 border-b border-slate-800 flex items-center justify-between">
         <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">
           Node &amp; XSD Schema Inspector
@@ -361,7 +394,7 @@
         </span>
       </div>
 
-      <div id="inspector-content" class="p-4 space-y-4 text-xs flex-1 overflow-y-auto">
+      <div id="inspector-content" class="p-4 space-y-4 text-xs flex-1 flex flex-col min-h-0 overflow-y-auto">
         <div class="text-slate-400 text-center py-12 space-y-2">
           <p class="text-sm font-medium text-slate-300">Click any node in the graph</p>
           <p class="text-xs text-slate-500">
@@ -1143,6 +1176,117 @@
       }).join('');
     }
 
+    let extractedConditionsList = [];
+
+    async function handleExtractConditionsSubmit(e) {
+      e.preventDefault();
+      const noteInput = document.getElementById('medical-note-input');
+      const btn = document.getElementById('btn-extract-conditions');
+      const outputEl = document.getElementById('medical-note-output');
+      const badgeEl = document.getElementById('medical-note-output-badge');
+
+      const medical_note = (noteInput.value || '').trim();
+      if (!medical_note) return;
+
+      btn.disabled = true;
+      btn.innerText = 'Extracting with Gemini...';
+      badgeEl.innerText = 'running...';
+      outputEl.innerHTML = `
+        <div class="text-[11px] text-indigo-300 py-3 text-center mono">
+          Analyzing medical note with gemini-2.5-flash...
+        </div>
+      `;
+
+      try {
+        const res = await fetch('/api/extract-conditions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ medical_note })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || 'Failed to extract conditions');
+        }
+        extractedConditionsList = data.conditions || [];
+        renderExtractedConditionsOutput(extractedConditionsList);
+      } catch (err) {
+        badgeEl.innerText = 'error';
+        outputEl.innerHTML = `
+          <div class="text-[11px] text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg p-2">
+            Error: ${escapeHtml(err.message)}
+          </div>
+        `;
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Extract Conditions & Keywords';
+      }
+    }
+
+    function renderExtractedConditionsOutput(conditions) {
+      const outputEl = document.getElementById('medical-note-output');
+      const badgeEl = document.getElementById('medical-note-output-badge');
+
+      if (!conditions || conditions.length === 0) {
+        badgeEl.innerText = '0 conditions';
+        outputEl.innerHTML = `
+          <div class="text-[11px] text-slate-400 text-center py-2">
+            No medical conditions detected in the provided text.
+          </div>
+        `;
+        return;
+      }
+
+      badgeEl.innerText = `${conditions.length} condition${conditions.length === 1 ? '' : 's'}`;
+      outputEl.innerHTML = conditions.map((item, idx) => {
+        const kws = item.keywords || [];
+        const kwQuery = item.keywords_query || kws.join('; ');
+        const kwBadges = kws.map(k =>
+          `<span class="px-1.5 py-0.5 text-[10px] mono rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">${escapeHtml(k)}</span>`
+        ).join('');
+
+        return `
+          <div class="bg-slate-900 border border-slate-800 rounded-lg p-2.5 space-y-1.5">
+            <div class="flex items-start justify-between gap-2">
+              <div class="font-semibold text-slate-100 text-xs leading-snug">
+                <span class="text-emerald-400 mono mr-1">${idx + 1}.</span>${escapeHtml(item.condition || '')}
+              </div>
+              <button type="button" onclick="searchExtractedCondition(${idx})"
+                title="Copy keywords to search box and find trajectories"
+                class="px-2 py-0.5 bg-indigo-600/20 hover:bg-indigo-600/35 text-indigo-300 border border-indigo-500/30 rounded text-[10px] font-medium shrink-0 transition">
+                Search →
+              </button>
+            </div>
+            <div class="flex flex-wrap gap-1 pt-0.5">
+              ${kwBadges || '<span class="text-[10px] text-slate-500">No keywords</span>'}
+            </div>
+            <div class="text-[10px] text-slate-400 mono truncate pt-0.5 border-t border-slate-800/80">
+              Query: ${escapeHtml(kwQuery)}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function searchExtractedCondition(idx) {
+      const item = extractedConditionsList[idx];
+      if (!item) return;
+      const q = item.keywords_query || (item.keywords || []).join('; ');
+      if (q) {
+        await quickSearch(q);
+      }
+    }
+
+    function clearMedicalNoteExtractor() {
+      extractedConditionsList = [];
+      document.getElementById('medical-note-input').value = '';
+      document.getElementById('medical-note-output-badge').innerText = '';
+      document.getElementById('medical-note-output').innerHTML = `
+        <div class="text-[11px] text-slate-500 text-center py-2">
+          No conditions extracted yet. Enter a medical note above and click <span class="text-slate-300 font-medium">Extract Conditions &amp; Keywords</span>.
+        </div>
+      `;
+    }
+
     async function handleSearchSubmit(e) {
       e.preventDefault();
       const q = document.getElementById('search-input').value.trim();
@@ -1252,11 +1396,11 @@
       // Connected Children / Linked Terms Preview
       if (detail.children_preview && detail.children_preview.length > 0) {
         html += `
-          <div class="space-y-2">
-            <h4 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          <div class="flex-1 flex flex-col min-h-0 space-y-2">
+            <h4 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 shrink-0">
               Connected Nodes (${detail.total_children})
             </h4>
-            <div class="space-y-1 max-h-56 overflow-y-auto pr-1">
+            <div class="space-y-1 flex-1 min-h-[26rem] overflow-y-auto pr-1">
               ${detail.children_preview.map(ch => `
                 <button onclick="handleInspectorNodeClick('${ch.id}')"
                   class="w-full text-left bg-slate-950 hover:bg-slate-800/90 border border-slate-800 rounded-lg px-2.5 py-1.5 flex items-center justify-between transition">

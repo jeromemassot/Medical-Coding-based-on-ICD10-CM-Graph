@@ -939,7 +939,7 @@ class XMLGraphWorkspace:
                 "tag": self.nodes[cid]["tag"],
                 "code": self.nodes[cid].get("properties", {}).get("code", ""),
             }
-            for cid in self.parent_to_children.get(node_id, [])[:30]
+            for cid in self.parent_to_children.get(node_id, [])[:200]
             if cid in self.nodes
         ]
         if node_id in self.code_to_terms:
@@ -950,7 +950,7 @@ class XMLGraphWorkspace:
                     "tag": self.nodes[tid]["tag"],
                     "code": node.get("title", ""),
                 }
-                for tid in self.code_to_terms[node_id][:30]
+                for tid in self.code_to_terms[node_id][:200]
                 if tid in self.nodes
             ]
 
