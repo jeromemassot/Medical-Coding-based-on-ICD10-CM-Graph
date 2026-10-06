@@ -207,7 +207,7 @@
   <!-- MAIN WORKSPACE -->
   <div class="flex-1 flex overflow-hidden relative">
 
-    <!-- LEFT SIDEBAR: MEDICAL NOTE EXTRACTOR, SEARCH, FILTERS, LEGEND -->
+    <!-- LEFT SIDEBAR: MEDICAL NOTE EXTRACTOR, SEARCH, FILTERS -->
     <aside class="w-[25rem] border-r border-slate-800 bg-slate-900/75 flex flex-col shrink-0 z-10 overflow-y-auto">
 
       <!-- Medical Note Condition & Keyword Extractor (Gemini 2.5 Flash) -->
@@ -306,17 +306,6 @@
           <option value="breadthfirst">Breadth-First Layered</option>
         </select>
       </div>
-
-      <!-- Interactive Legend -->
-      <div class="p-3.5 space-y-2.5">
-        <div class="flex items-center justify-between">
-          <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Graph Node &amp; Edge Legend</span>
-          <span class="text-[10px] text-slate-500">Click to filter</span>
-        </div>
-        <div id="legend-items" class="space-y-1.5 text-xs">
-          <!-- Populated dynamically based on mode -->
-        </div>
-      </div>
     </aside>
 
     <!-- CENTER GRAPH CANVAS -->
@@ -383,9 +372,9 @@
       <div id="cy" class="flex-1"></div>
     </main>
 
-    <!-- RIGHT SIDEBAR: NODE & XSD SCHEMA INSPECTOR -->
+    <!-- RIGHT SIDEBAR: NODE & XSD SCHEMA INSPECTOR, LEGEND -->
     <aside class="w-[30rem] border-l border-slate-800 bg-slate-900/80 flex flex-col shrink-0 z-10 overflow-y-auto">
-      <div class="p-3.5 border-b border-slate-800 flex items-center justify-between">
+      <div class="p-3.5 border-b border-slate-800 flex items-center justify-between shrink-0">
         <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">
           Node &amp; XSD Schema Inspector
         </h2>
@@ -400,6 +389,17 @@
           <p class="text-xs text-slate-500">
             Inspect its XML content, attributes, source line number, governing XSD Schema rules, and semantic cross-references.
           </p>
+        </div>
+      </div>
+
+      <!-- Interactive Legend -->
+      <div class="p-3.5 border-t border-slate-800 space-y-2.5 shrink-0">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Graph Node &amp; Edge Legend</span>
+          <span class="text-[10px] text-slate-500">Click to filter</span>
+        </div>
+        <div id="legend-items" class="space-y-1.5 text-xs">
+          <!-- Populated dynamically based on mode -->
         </div>
       </div>
     </aside>
@@ -1400,7 +1400,7 @@
             <h4 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 shrink-0">
               Connected Nodes (${detail.total_children})
             </h4>
-            <div class="space-y-1 flex-1 min-h-[26rem] overflow-y-auto pr-1">
+            <div class="space-y-1 flex-1 min-h-[12rem] overflow-y-auto pr-1">
               ${detail.children_preview.map(ch => `
                 <button onclick="handleInspectorNodeClick('${ch.id}')"
                   class="w-full text-left bg-slate-950 hover:bg-slate-800/90 border border-slate-800 rounded-lg px-2.5 py-1.5 flex items-center justify-between transition">
