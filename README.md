@@ -1,6 +1,20 @@
-# XML & XSD Interactive Graph Explorer
+# Medical Coding Based on Gemini & ICD-10-CM Interactive Graph Explorer
+
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Uvicorn](https://img.shields.io/badge/Uvicorn-499848?style=for-the-badge&logo=gunicorn&logoColor=white)
+![Gemini 2.5 Flash](https://img.shields.io/badge/Gemini_2.5_Flash-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)
+![Google GenAI SDK](https://img.shields.io/badge/Google_GenAI_SDK-EA4335?style=for-the-badge&logo=googlecloud&logoColor=white)
+![Pydantic](https://img.shields.io/badge/Pydantic-E92063?style=for-the-badge&logo=pydantic&logoColor=white)
+![lxml](https://img.shields.io/badge/lxml-XML_%26_XSD-F97316?style=for-the-badge)
+![NetworkX](https://img.shields.io/badge/NetworkX-Property_Graph-10B981?style=for-the-badge)
+![Cytoscape.js](https://img.shields.io/badge/Cytoscape.js_%26_Dagre-F59E0B?style=for-the-badge&logo=javascript&logoColor=black)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
+![BigQuery & Spanner Graph](https://img.shields.io/badge/BigQuery_%26_Spanner_Graph-ISO_GQL-6366F1?style=for-the-badge&logo=googlebigquery&logoColor=white)
 
 An interactive web application that loads an **XML Document** (`xml_documents/icd10cm-index-2027.xml`) and an **XML Schema** (`xml_schemas/icd10cm-index.xsd`), validates the document against the schema, builds a schema-guided **Property & Knowledge Graph**, extracts clinical conditions and search keywords from unstructured medical notes using **Gemini 2.5 Flash**, and ranks **root-to-code trajectories** interactively.
+
+![illustration](resources/readme_illustration.jpeg)
 
 ---
 
@@ -85,6 +99,8 @@ flowchart LR
   - Adjust **Top N Ranked Trajectories** (`1` to `500`, default `10`) to control how many top-ranked trajectories are merged into the displayed subgraph.
   - **Click a Ranked Trajectory Card** in the left sidebar to isolate that single root-to-code path on the canvas and inspect its terminal node.
   - **Click Any Node on the Canvas** during an active search to isolate only the trajectory(ies) passing through that node; click the root node (`n_0`), the canvas background, or **Show All Top N Trajectories** to restore the full Top N subgraph.
+
+![application-screenshot](resources/application_screenshot.png)
 
 ### 5. Interactive Visualization (`app/static/index.html`)
 - **Three-Column Workspace**:
