@@ -21,31 +21,32 @@ An interactive web application that loads an **XML Document** (`xml_documents/ic
 ## System Architecture & Clinical Coding Workflow
 
 ```mermaid
-flowchart TD
-    subgraph Ingestion["1. XML & XSD Ingestion (app/graph_engine.py)"]
-        XSD["XSD Schema (icd10cm-index.xsd)"] --> Validator["lxml XMLSchema Validator & Analyzer"]
-        XML["XML Document (icd10cm-index-2027.xml)"] --> Validator
-        Validator --> SchemaGraph["XSD Schema Meta-Graph"]
-        Validator --> ContentGraph["XML Content Property Graph (103,912 Nodes)"]
-        ContentGraph --> TrajIndex["Precomputed Root-to-Code Trajectory Index (79,112 Paths)"]
+%%{init: {'themeVariables': {'fontSize': '12px'}, 'flowchart': {'nodeSpacing': 18, 'rankSpacing': 28, 'padding': 6}}}%%
+flowchart LR
+    subgraph Ingestion["1. Ingestion"]
+        XSD["XSD Schema"] --> Validator["lxml Validator"]
+        XML["XML Document"] --> Validator
+        Validator --> SchemaGraph["Schema Meta-Graph"]
+        Validator --> ContentGraph["Content Graph (103.9k Nodes)"]
+        ContentGraph --> TrajIndex["Trajectory Index (79.1k Paths)"]
     end
 
-    subgraph Extraction["2. Clinical Note Extraction (app/main.py)"]
-        Note["Unstructured Medical Note"] --> Gemini["Gemini 2.5 Flash (Structured Output)"]
-        Gemini --> CondList["Extracted Conditions & Atomic Keywords (kw1; kw2; ...)"]
+    subgraph Extraction["2. Note Extraction"]
+        Note["Medical Note"] --> Gemini["Gemini 2.5 Flash"]
+        Gemini --> CondList["Conditions & Keywords"]
     end
 
-    subgraph Search["3. Trajectory Search & Ranking Engine"]
-        CondList -->|"One-click Search or Manual Input"| QueryParser["Semicolon-Separated Keyword Parser"]
-        TrajIndex --> Ranker["Multi-Keyword Trajectory Scorer & Ranker"]
+    subgraph Search["3. Trajectory Search"]
+        CondList --> QueryParser["Keyword Parser"]
+        TrajIndex --> Ranker["Trajectory Ranker"]
         QueryParser --> Ranker
-        Ranker --> TopN["Top N Ranked Root-to-Code Subgraph"]
+        Ranker --> TopN["Top N Subgraph"]
     end
 
-    subgraph UI["4. Interactive Graph Explorer (app/static/index.html)"]
-        TopN --> Canvas["Cytoscape.js Canvas (Isolate Paths, Expand Nodes, Dark/Light Theme)"]
+    subgraph UI["4. Graph Explorer UI"]
+        TopN --> Canvas["Cytoscape.js Canvas"]
         SchemaGraph --> Canvas
-        Canvas --> Export["Save As Property Graph (.pg.json, .jsonl, .sql)"]
+        Canvas --> Export["Save Property Graph"]
     end
 ```
 
