@@ -16,8 +16,6 @@ An interactive web application that loads an **XML Document** (`xml_documents/ic
 
 ![illustration](resources/readme_illustration.jpeg)
 
----
-
 ## System Architecture & Clinical Coding Workflow
 
 ```mermaid
