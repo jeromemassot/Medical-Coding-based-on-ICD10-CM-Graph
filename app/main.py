@@ -246,6 +246,11 @@ def extract_conditions_from_note(req: ExtractConditionsRequest) -> Dict[str, Any
         "2. `keywords`: An ordered list of atomic ICD-10-CM index search keywords associated with this condition "
         "(e.g., main condition term, anatomical site, acuity/chronicity, congenital/acquired modifier, etiology, or subtype) "
         "suitable for searching the ICD-10-CM index graph.\n\n"
+        "Important notes for extracting keywords:\n"
+        "- Do not include English stopwords as keywords.\n\n"
+        "- If additional conditions are directly mentioned as linked to a first condition, include them as keywords.\n\n"
+        "- If additional conditions are not directly mentioned as linked to a first condition, do not include them as keywords "
+        "but as separate condition entries.\n\n"
         f"Medical Note:\n{note_text}"
     )
 
