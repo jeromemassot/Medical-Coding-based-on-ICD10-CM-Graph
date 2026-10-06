@@ -48,8 +48,6 @@ flowchart LR
     end
 ```
 
----
-
 ## Key Features
 
 ### 1. XSD Schema Validation & Meta-Graph Construction (`app/graph_engine.py`)
@@ -115,8 +113,6 @@ flowchart LR
   - **Property Graph JSON (`.pg.json` — Default)**: Self-contained document combining an `llm_context` clinical trajectory summary, ready-to-run BigQuery Graph & Spanner Graph `CREATE PROPERTY GRAPH` DDL, and flat primary/foreign-key `nodes` & `edges` collections.
   - **Property Graph JSONL (`.jsonl`)**: Newline-Delimited JSON records (`record_type: "node" | "edge"`) ready for direct `bq load --source_format=NEWLINE_DELIMITED_JSON` and Spanner bulk import.
   - **GoogleSQL Property Graph Script (`.sql`)**: Executable `CREATE TABLE`, batched `INSERT INTO`, and `CREATE OR REPLACE PROPERTY GRAPH` statements.
-
----
 
 ## Quick Start
 
