@@ -240,16 +240,16 @@ def extract_conditions_from_note(req: ExtractConditionsRequest) -> Dict[str, Any
 
     prompt = (
         "You are a clinical coding expert specializing in the ICD-10-CM Index to Diseases and Injuries.\n"
-        "Analyze the following medical note and extract every medical condition, diagnosis, or clinical finding mentioned.\n"
+        "Analyze the following medical note and extract every medical condition, diagnosis, or clinical finding mentioned.\n\n"
         "For each extracted condition, provide:\n"
-        "1. `condition`: The clear clinical name/description of the condition mentioned in the note.\n"
-        "2. `keywords`: An ordered list of atomic ICD-10-CM index search keywords associated with this condition "
+        "1. `condition`: The clear clinical name/description of the main condition mentioned in the note.\n"
+        "2. `keywords`: An ordered list of secondary conditions and atomic ICD-10-CM index search keywords associated with this condition "
         "(e.g., main condition term, anatomical site, acuity/chronicity, congenital/acquired modifier, etiology, or subtype) "
         "suitable for searching the ICD-10-CM index graph.\n\n"
         "Important notes for extracting keywords:\n"
         "- Do not include English stopwords as keywords.\n\n"
-        "- If additional conditions are directly mentioned as linked to a first condition, include them as keywords.\n\n"
-        "- If additional conditions are not directly mentioned as linked to a first condition, do not include them as keywords "
+        "- If additional conditions are directly (in the same sentence) mentioned as linked to a first condition, include them as keywords.\n\n"
+        "- If additional conditions are not directly (in another sentence, or in a different section, or further away in the note) mentioned as linked to a first condition, do not include them as keywords "
         "but as separate condition entries.\n\n"
         f"Medical Note:\n{note_text}"
     )
